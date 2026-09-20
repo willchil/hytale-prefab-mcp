@@ -1,0 +1,17 @@
+{
+  "Group": "dev.hytalemodding",
+  "Name": "HytaleMcp",
+  "Version": "1.0.0",
+  "Description": "Hosts an MCP server so agentic harnesses can search the live block palette and author prefabs",
+  "Authors": [
+    {
+      "Name": "William Chilcote"
+    }
+  ],
+  "ServerVersion": "^${hytale.server.version}",
+  "Dependencies": {},
+  "OptionalDependencies": {},
+  "DisabledByDefault": false,
+  "IncludesAssetPack": false,
+  "Main": "dev.hytalemodding.mcp.McpPlugin"
+}
