@@ -2,6 +2,7 @@ package games.crescentnetwork.mcp.mcp.tools;
 
 import com.google.gson.JsonObject;
 import games.crescentnetwork.mcp.http.JsonRpc;
+import games.crescentnetwork.mcp.mcp.McpCaller;
 import games.crescentnetwork.mcp.mcp.McpServices;
 import games.crescentnetwork.mcp.mcp.McpTool;
 import games.crescentnetwork.mcp.palette.AssetLocator;
@@ -60,7 +61,7 @@ public final class GetBlockTextureTool implements McpTool {
     }
 
     @Override
-    public ToolResult call(JsonObject arguments) {
+    public ToolResult call(JsonObject arguments, McpCaller caller) {
         BlockCatalog catalog = services.catalog();
         if (catalog == null) {
             return ToolResult.failure("The block palette is not loaded yet; the server is still booting.");

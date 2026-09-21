@@ -8,6 +8,7 @@ import com.hypixel.hytale.logger.HytaleLogger;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import games.crescentnetwork.mcp.auth.McpAuthenticator;
+import games.crescentnetwork.mcp.mcp.McpCaller;
 import games.crescentnetwork.mcp.mcp.McpProtocol;
 
 import javax.annotation.Nullable;
@@ -190,7 +191,10 @@ public final class McpHttpServer {
                 return;
             }
 
-            JsonElement response = dispatch(parsed);
+            McpCaller caller = auth.player() == null
+                ? McpCaller.ANONYMOUS
+                : McpCaller.identified(auth.player(), auth.playerName());
+            JsonElement response = dispatch(parsed, caller);
             if (response == null) {
                 // Every message in the payload was a notification, so there is nothing to send back.
                 respond(exchange, 202, "application/json", new byte[0]);
@@ -227,7 +231,7 @@ public final class McpHttpServer {
 
     /** Handles a single request or a batch, returning null when nothing needs a reply. */
     @Nullable
-    private JsonElement dispatch(JsonElement parsed) {
+    private JsonElement dispatch(JsonElement parsed, McpCaller caller) {
         if (parsed.isJsonArray()) {
             JsonArray requests = parsed.getAsJsonArray();
             if (requests.isEmpty()) {
@@ -239,13 +243,13 @@ public final class McpHttpServer {
                     responses.add(JsonRpc.error(null, JsonRpc.INVALID_REQUEST, "Batch entry is not an object"));
                     continue;
                 }
-                JsonObject response = protocol.handle(element.getAsJsonObject());
+                JsonObject response = protocol.handle(element.getAsJsonObject(), caller);
                 if (response != null) responses.add(response);
             }
             return responses.isEmpty() ? null : responses;
         }
         if (parsed.isJsonObject()) {
-            return protocol.handle(parsed.getAsJsonObject());
+            return protocol.handle(parsed.getAsJsonObject(), caller);
         }
         return JsonRpc.error(null, JsonRpc.INVALID_REQUEST, "Request must be an object or an array");
     }

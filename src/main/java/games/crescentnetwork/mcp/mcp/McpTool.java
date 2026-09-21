@@ -15,7 +15,8 @@ public interface McpTool {
     /** JSON Schema for the tool's arguments, as advertised by {@code tools/list}. */
     JsonObject inputSchema();
 
-    ToolResult call(JsonObject arguments);
+    /** @param caller who the call is running for; anonymous unless tokens are required */
+    ToolResult call(JsonObject arguments, McpCaller caller);
 
     /**
      * What a tool hands back.

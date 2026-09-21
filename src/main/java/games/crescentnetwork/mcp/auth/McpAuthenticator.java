@@ -1,6 +1,8 @@
 package games.crescentnetwork.mcp.auth;
 
 import com.hypixel.hytale.server.core.permissions.PermissionsModule;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
 
 import javax.annotation.Nullable;
 import java.util.UUID;
@@ -44,17 +46,18 @@ public final class McpAuthenticator {
      * <p>{@code player} is null for an anonymous caller, which is a normal outcome when tokens are
      * not required, so being allowed is tracked separately from being identified.
      */
-    public record Outcome(boolean allowed, @Nullable UUID player, @Nullable Failure failure) {
+    public record Outcome(boolean allowed, @Nullable UUID player, @Nullable String playerName,
+                          @Nullable Failure failure) {
         static Outcome anonymous() {
-            return new Outcome(true, null, null);
+            return new Outcome(true, null, null, null);
         }
 
-        static Outcome of(UUID player) {
-            return new Outcome(true, player, null);
+        static Outcome of(UUID player, @Nullable String playerName) {
+            return new Outcome(true, player, playerName, null);
         }
 
         static Outcome refused(Failure failure) {
-            return new Outcome(false, null, failure);
+            return new Outcome(false, null, null, failure);
         }
     }
 
@@ -88,7 +91,25 @@ public final class McpAuthenticator {
         if (player == null) return Outcome.refused(Failure.INVALID);
 
         if (!hasPermission(player)) return Outcome.refused(Failure.FORBIDDEN);
-        return Outcome.of(player);
+        return Outcome.of(player, usernameOf(player));
+    }
+
+    /**
+     * The player's username, or null when they are not connected.
+     *
+     * <p>The server keeps no username for a player who is offline, and a token deliberately keeps
+     * working between sessions, so an absent name is an ordinary outcome rather than an error.
+     */
+    @Nullable
+    private String usernameOf(UUID player) {
+        try {
+            Universe universe = Universe.get();
+            if (universe == null) return null;
+            PlayerRef ref = universe.getPlayer(player);
+            return ref == null ? null : ref.getUsername();
+        } catch (RuntimeException | LinkageError e) {
+            return null;
+        }
     }
 
     private boolean hasPermission(UUID player) {

@@ -54,8 +54,9 @@ public final class PrefabWriter {
     /**
      * @param name      prefab file name, without the {@code .prefab.json} suffix
      * @param overwrite whether an existing prefab of that name may be replaced
+     * @param directory where to write it, relative to the server prefabs directory
      */
-    public static Saved write(BuildRecorder recorder, String name, boolean overwrite) {
+    public static Saved write(BuildRecorder recorder, String name, boolean overwrite, String directory) {
         String cleaned = cleanName(name);
         BuildRecorder.Bounds bounds = recorder.bounds();
 
@@ -68,7 +69,7 @@ public final class PrefabWriter {
         addBlocks(recorder, selection);
         addFluids(recorder, selection);
 
-        Path target = resolveTarget(cleaned);
+        Path target = resolveTarget(cleaned, directory);
         Path written;
         try {
             // AUTO writes .prefab.json below the large-prefab threshold, which the cell cap keeps us
@@ -129,9 +130,20 @@ public final class PrefabWriter {
         }
     }
 
-    /** The server prefabs directory, resolved so a name cannot climb out of it. */
-    public static Path resolveTarget(String cleanedName) {
-        Path dir = PrefabStore.get().getServerPrefabsPath();
+    /**
+     * Resolves a prefab path inside the server prefabs directory.
+     *
+     * <p>The subdirectory and the file name are resolved in two guarded steps, so neither a caller's
+     * name nor a player's username can climb out of the prefabs directory. Nothing is created here;
+     * {@code PrefabStore.savePrefab} makes the parent directories when it writes.
+     */
+    public static Path resolveTarget(String cleanedName, String directory) {
+        Path base = PrefabStore.get().getServerPrefabsPath();
+        Path dir = PathUtil.resolvePathWithinDir(base, directory);
+        if (dir == null) {
+            throw new ScriptError(ScriptError.Phase.SAVE,
+                "Prefab directory \"" + directory + "\" escapes the prefabs directory.");
+        }
         Path resolved = PathUtil.resolvePathWithinDir(dir, cleanedName);
         if (resolved == null) {
             throw new ScriptError(ScriptError.Phase.SAVE,

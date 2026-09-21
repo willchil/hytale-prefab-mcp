@@ -20,10 +20,15 @@ public final class PrefabLoader {
     private PrefabLoader() {
     }
 
-    /** Loads a prefab from the server {@code prefabs/} directory by name. */
-    public static BuildRecorder load(String name) {
+    /**
+     * Loads a prefab by name from the caller's own directory.
+     *
+     * <p>Looks only where that caller writes, so one player's render cannot reach into another's
+     * prefabs just by guessing a name.
+     */
+    public static BuildRecorder load(String name, String directory) {
         String cleaned = PrefabWriter.cleanName(name);
-        Path target = PrefabWriter.resolveTarget(cleaned);
+        Path target = PrefabWriter.resolveTarget(cleaned, directory);
 
         BlockSelection selection;
         try {

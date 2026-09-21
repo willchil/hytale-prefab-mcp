@@ -40,7 +40,7 @@ public final class McpProtocol {
      * @return the response, or null when the request was a notification and needs no reply
      */
     @Nullable
-    public JsonObject handle(JsonObject request) {
+    public JsonObject handle(JsonObject request, McpCaller caller) {
         JsonElement id = JsonRpc.idOf(request);
         boolean notification = JsonRpc.isNotification(request);
 
@@ -55,7 +55,7 @@ public final class McpProtocol {
                 case "initialize" -> initialize(params);
                 case "ping" -> new JsonObject();
                 case "tools/list" -> listTools();
-                case "tools/call" -> callTool(params);
+                case "tools/call" -> callTool(params, caller);
                 default -> null;
             };
             if (result == null) {
@@ -113,7 +113,7 @@ public final class McpProtocol {
         return result;
     }
 
-    private JsonObject callTool(@Nullable JsonObject params) {
+    private JsonObject callTool(@Nullable JsonObject params, McpCaller caller) {
         String name = JsonRpc.stringOr(params, "name", "");
         if (name.isEmpty()) throw new InvalidParams("tools/call requires a tool name");
 
@@ -124,7 +124,7 @@ public final class McpProtocol {
         if (arguments == null) arguments = new JsonObject();
 
         try {
-            return tool.call(arguments).toJson();
+            return tool.call(arguments, caller).toJson();
         } catch (RuntimeException e) {
             // A tool blowing up is reported through the result rather than as a JSON-RPC error, so the
             // model sees it as a failed attempt it can retry instead of as a broken connection.

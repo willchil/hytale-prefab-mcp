@@ -3,10 +3,12 @@ package games.crescentnetwork.mcp.mcp.tools;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import games.crescentnetwork.mcp.http.JsonRpc;
+import games.crescentnetwork.mcp.mcp.McpCaller;
 import games.crescentnetwork.mcp.mcp.McpServices;
 import games.crescentnetwork.mcp.mcp.McpTool;
 import games.crescentnetwork.mcp.palette.BlockCatalog;
 import games.crescentnetwork.mcp.prefab.PrefabLoader;
+import games.crescentnetwork.mcp.prefab.PrefabLocation;
 import games.crescentnetwork.mcp.prefab.PrefabWriter;
 import games.crescentnetwork.mcp.render.Camera;
 import games.crescentnetwork.mcp.render.VoxelRenderer;
@@ -75,15 +77,16 @@ public final class RenderPrefabTool implements McpTool {
     }
 
     @Override
-    public ToolResult call(JsonObject arguments) {
+    public ToolResult call(JsonObject arguments, McpCaller caller) {
         BlockCatalog catalog = services.catalog();
         if (catalog == null) {
             return ToolResult.failure("The block palette is not loaded yet; the server is still booting.");
         }
 
+        String directory = PrefabLocation.directoryFor(caller);
         String requested = JsonRpc.stringOr(arguments, "name", null);
         if (requested == null || requested.isBlank()) {
-            requested = services.lastBuildName();
+            requested = services.lastBuildName(directory);
             if (requested == null) {
                 return ToolResult.failure(
                     "No prefab name given and nothing has been built this session. Pass name.");
@@ -96,8 +99,8 @@ public final class RenderPrefabTool implements McpTool {
             cleaned = PrefabWriter.cleanName(requested);
             // A build from this session is already in memory; anything else is read back from disk,
             // so prefabs made earlier or by the in-game editor can be inspected too.
-            BuildRecorder cached = services.recentBuild(cleaned);
-            recorder = cached != null ? cached : PrefabLoader.load(cleaned);
+            BuildRecorder cached = services.recentBuild(directory, cleaned);
+            recorder = cached != null ? cached : PrefabLoader.load(cleaned, directory);
         } catch (ScriptError e) {
             return ToolResult.failure(BuildPrefabTool.format(e));
         } catch (RuntimeException e) {

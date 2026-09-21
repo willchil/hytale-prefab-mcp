@@ -2,9 +2,11 @@ package games.crescentnetwork.mcp.mcp.tools;
 
 import com.google.gson.JsonObject;
 import games.crescentnetwork.mcp.http.JsonRpc;
+import games.crescentnetwork.mcp.mcp.McpCaller;
 import games.crescentnetwork.mcp.mcp.McpServices;
 import games.crescentnetwork.mcp.mcp.McpTool;
 import games.crescentnetwork.mcp.palette.BlockCatalog;
+import games.crescentnetwork.mcp.prefab.PrefabLocation;
 import games.crescentnetwork.mcp.prefab.PrefabWriter;
 import games.crescentnetwork.mcp.script.ScriptError;
 import games.crescentnetwork.mcp.script.ScriptRunner;
@@ -97,7 +99,7 @@ public final class BuildPrefabTool implements McpTool {
     }
 
     @Override
-    public ToolResult call(JsonObject arguments) {
+    public ToolResult call(JsonObject arguments, McpCaller caller) {
         BlockCatalog catalog = services.catalog();
         if (catalog == null) {
             return ToolResult.failure("The block palette is not loaded yet; the server is still booting.");
@@ -128,15 +130,16 @@ public final class BuildPrefabTool implements McpTool {
             return ToolResult.failure("Build failed unexpectedly: " + message);
         }
 
+        String directory = PrefabLocation.directoryFor(caller);
         PrefabWriter.Saved saved;
         try {
-            saved = PrefabWriter.write(result.recorder(), name, overwrite);
+            saved = PrefabWriter.write(result.recorder(), name, overwrite, directory);
         } catch (ScriptError e) {
             return ToolResult.failure(format(e));
         }
 
         // Kept so render_prefab can show this build straight back without re-reading it from disk.
-        services.rememberBuild(PrefabWriter.cleanName(name), result.recorder());
+        services.rememberBuild(directory, PrefabWriter.cleanName(name), result.recorder());
 
         StringBuilder out = new StringBuilder();
         out.append("Saved ").append(saved.path()).append('\n')

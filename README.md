@@ -116,6 +116,24 @@ Tokens are shown only by `/prefab-mcp`, only to the player who ran it, and are n
 **To revoke everyone at once**, change `tokenSecret` in `mcp.json` and restart; every issued token
 stops verifying. **To revoke one player**, take away their permission.
 
+### Where prefabs land
+
+Everything this plugin writes goes under `prefabs/prefab-mcp/`, so agent-made prefabs never mix with
+the ones an operator or the in-game editor made.
+
+| Caller | Directory |
+|---|---|
+| Anonymous, on a server not requiring tokens | `prefabs/prefab-mcp/` |
+| A player who was online at the time | `prefabs/prefab-mcp/<username>/` |
+| A player who was offline at the time | `prefabs/prefab-mcp/offline-players/` |
+
+A username only resolves for a connected player, and a token deliberately keeps working between
+sessions, so the offline case is ordinary rather than an error — an agent running overnight lands
+there. `render_prefab` reads from the same directory it would write to, so one player cannot render
+another's prefab by guessing a name.
+
+Usernames are reduced to a single safe path segment before use.
+
 ### Permission
 
 `/prefab-mcp` and every MCP request require `games.crescentnetwork.prefabmcp.command`, derived from

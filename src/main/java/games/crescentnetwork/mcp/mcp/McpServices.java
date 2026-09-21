@@ -30,7 +30,8 @@ public final class McpServices {
             }
         };
 
-    private volatile String lastBuildName;
+    /** Last build per directory, guarded by the same lock as the cache it describes. */
+    private final Map<String, String> lastBuildNames = new java.util.HashMap<>();
 
     @Nullable
     public BlockCatalog catalog() {
@@ -47,22 +48,35 @@ public final class McpServices {
         return textures;
     }
 
-    public void rememberBuild(String name, BuildRecorder recorder) {
+    /**
+     * Keeps a just-built prefab around so a render does not have to read it back from disk.
+     *
+     * <p>Keyed by directory as well as name. Two players can each have a prefab called "tower", and
+     * a cache keyed on the name alone would hand one of them the other's build.
+     */
+    public void rememberBuild(String directory, String name, BuildRecorder recorder) {
         synchronized (recentBuilds) {
-            recentBuilds.put(name.toLowerCase(java.util.Locale.ROOT), recorder);
+            recentBuilds.put(key(directory, name), recorder);
+            lastBuildNames.put(directory, name);
         }
-        lastBuildName = name;
     }
 
     @Nullable
-    public BuildRecorder recentBuild(String name) {
+    public BuildRecorder recentBuild(String directory, String name) {
         synchronized (recentBuilds) {
-            return recentBuilds.get(name.toLowerCase(java.util.Locale.ROOT));
+            return recentBuilds.get(key(directory, name));
         }
     }
 
+    private static String key(String directory, String name) {
+        return directory.toLowerCase(java.util.Locale.ROOT) + "/" + name.toLowerCase(java.util.Locale.ROOT);
+    }
+
     @Nullable
-    public String lastBuildName() {
-        return lastBuildName;
+    /** The last prefab built in that directory, so a render with no name means "what I just made". */
+    public String lastBuildName(String directory) {
+        synchronized (recentBuilds) {
+            return lastBuildNames.get(directory);
+        }
     }
 }
