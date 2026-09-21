@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import games.crescentnetwork.mcp.auth.McpAuthenticator;
 import games.crescentnetwork.mcp.mcp.McpProtocol;
 
 import javax.annotation.Nullable;
@@ -48,6 +49,7 @@ public final class McpHttpServer {
     private static final int WORKER_THREADS = 2;
 
     private final McpProtocol protocol;
+    private final McpAuthenticator authenticator;
 
     @Nullable
     private HttpServer server;
@@ -55,8 +57,9 @@ public final class McpHttpServer {
     private ExecutorService executor;
     private int boundPort = -1;
 
-    public McpHttpServer(McpProtocol protocol) {
+    public McpHttpServer(McpProtocol protocol, McpAuthenticator authenticator) {
         this.protocol = protocol;
+        this.authenticator = authenticator;
     }
 
     /**
@@ -163,6 +166,15 @@ public final class McpHttpServer {
                 return;
             }
 
+            // Checked before the body is read: an unauthenticated caller should not be able to make
+            // the server buffer megabytes of script for it.
+            McpAuthenticator.Outcome auth =
+                authenticator.authenticate(exchange.getRequestHeaders().getFirst("Authorization"));
+            if (!auth.allowed()) {
+                refuse(exchange, auth.failure());
+                return;
+            }
+
             byte[] raw = readBody(exchange);
             if (raw == null) {
                 respondJson(exchange, 413,
@@ -195,6 +207,22 @@ public final class McpHttpServer {
         } finally {
             exchange.close();
         }
+    }
+
+    /**
+     * Refuses a request, distinguishing "who are you" from "you may not".
+     *
+     * <p>401 carries a {@code WWW-Authenticate} challenge so a client knows what kind of credential
+     * is wanted; 403 means the credential was understood and the answer is still no.
+     */
+    private void refuse(HttpExchange exchange, McpAuthenticator.Failure failure) throws IOException {
+        int status = failure == McpAuthenticator.Failure.FORBIDDEN ? 403 : 401;
+        if (status == 401) {
+            exchange.getResponseHeaders().add("WWW-Authenticate", "Bearer realm=\"" + McpProtocol.SERVER_NAME + "\"");
+        }
+        LOGGER.at(Level.WARNING).log("MCP request refused: %s", failure.name());
+        respondJson(exchange, status,
+            JsonRpc.error(null, JsonRpc.INVALID_REQUEST, failure.message()));
     }
 
     /** Handles a single request or a batch, returning null when nothing needs a reply. */

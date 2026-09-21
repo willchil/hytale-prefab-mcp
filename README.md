@@ -33,13 +33,18 @@ with the address the listener actually took:
 
 ```
 MCP server listening on port 8765
+This token is personal to you. Anyone who has it can build on this server as you, so do not
+share it or paste it anywhere public.
 Add this to your MCP client configuration, replacing <server-host> with this server's
 address (127.0.0.1 if it is the same machine as the agent):
 {
   "mcpServers": {
     "hytale-prefab": {
       "type": "http",
-      "url": "http://<server-host>:8765/mcp"
+      "url": "http://<server-host>:8765/mcp",
+      "headers": {
+        "Authorization": "Bearer 657827e9-8e16-4614-b533-4cd444373a46.HvjnLeoLyTwzJ-8kMPhP69Vze-7MXHZz"
+      }
     }
   }
 }
@@ -59,10 +64,41 @@ claude mcp add --transport http hytale-prefab http://127.0.0.1:8765/mcp
 The listener binds to loopback only, and refuses requests carrying a cross-origin `Origin` header, so
 it is reachable by an agent on the same machine and by nothing else.
 
+### Authentication
+
+Every MCP request must carry the personal token of a player who holds the permission below:
+
+```
+Authorization: Bearer <player-uuid>.<signature>
+```
+
+A token is **derived, not stored**: it is the player's id alongside an HMAC-SHA256 of that id under
+the server's `tokenSecret`. Nothing is persisted per player, the same player is always shown the same
+token, and the id travels inside the token so it can be checked on its own rather than by searching
+every player the server has ever seen.
+
+The two halves are checked separately. The token says *which player*; the permission system says
+*whether they may*. So revoking someone's permission cuts off their MCP access immediately, with no
+need to rotate the secret or reissue anyone else's token. Permissions resolve through groups and
+wildcards and work for offline players, so a token keeps working between sessions.
+
+| Request | Response |
+|---|---|
+| No `Authorization` header | `401` with a `WWW-Authenticate` challenge |
+| Token that does not verify | `401` |
+| Valid token, player lacks the permission | `403` |
+| Valid token, player holds the permission | `200` |
+
+Tokens are shown only by `/prefab-mcp`, only to the player who ran it, and are never logged.
+
+**To revoke everyone at once**, change `tokenSecret` in `mcp.json` and restart; every issued token
+stops verifying. **To revoke one player**, take away their permission.
+
 ### Permission
 
-`/prefab-mcp` requires `games.crescentnetwork.prefabmcp.command`, derived from the manifest's `Group`
-and `Name` so it follows them rather than drifting. The node is logged at startup:
+`/prefab-mcp` and every MCP request require `games.crescentnetwork.prefabmcp.command`, derived from
+the manifest's `Group` and `Name` so it follows them rather than drifting. The node is logged at
+startup:
 
 ```
 [PrefabMcp|P] Registered /prefab-mcp (permission: games.crescentnetwork.prefabmcp.command)
@@ -78,9 +114,15 @@ On first load the plugin writes `mods/games.crescentnetwork_PrefabMcp/mcp.json`:
 
 ```json
 {
-  "port": 7520
+  "port": 7520,
+  "tokenSecret": "rK-FDBd0xT66CRThXuR30VQDwpj6D3-iSFveyJLinJw"
 }
 ```
+
+`tokenSecret` is generated once with `SecureRandom` and is the salt every personal token derives
+from. It is never shipped with a default, because a default would make every server's tokens
+forgeable by anyone who read the source. A config missing a setting gains it on the next load, with
+the rest of the file left untouched.
 
 The port it starts with is the game's own bind port plus 2000, so several servers on one machine do
 not collide. After that the file is the source of truth and is never rewritten, so an edit survives a

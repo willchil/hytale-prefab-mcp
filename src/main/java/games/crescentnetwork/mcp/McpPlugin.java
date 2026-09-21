@@ -11,6 +11,8 @@ import com.hypixel.hytale.server.core.event.events.BootEvent;
 import com.hypixel.hytale.server.core.event.events.ShutdownEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import games.crescentnetwork.mcp.auth.McpAuthenticator;
+import games.crescentnetwork.mcp.auth.McpTokens;
 import games.crescentnetwork.mcp.command.PrefabMcpCommand;
 import games.crescentnetwork.mcp.http.McpHttpServer;
 import games.crescentnetwork.mcp.mcp.McpProtocol;
@@ -43,6 +45,8 @@ public final class McpPlugin extends JavaPlugin {
     private final McpServices services = new McpServices();
 
     private McpHttpServer httpServer;
+    private McpConfig config;
+    private McpTokens tokens;
 
     public McpPlugin(@Nonnull JavaPluginInit init) {
         super(init);
@@ -55,10 +59,16 @@ public final class McpPlugin extends JavaPlugin {
             new GetBlockTextureTool(services),
             new BuildPrefabTool(services),
             new RenderPrefabTool(services));
-        McpProtocol protocol = new McpProtocol(tools);
-        this.httpServer = new McpHttpServer(protocol);
+        // Read here rather than at boot: the command and the authenticator both need the secret,
+        // and both are built while the plugin is being set up.
+        this.config = McpConfig.loadOrCreate(getDataDirectory(), defaultPort(),
+            message -> getLogger().at(Level.WARNING).log("%s", message));
+        this.tokens = new McpTokens(config.tokenSecret());
 
-        getCommandRegistry().registerCommand(new PrefabMcpCommand(httpServer, commandPermission()));
+        McpProtocol protocol = new McpProtocol(tools);
+        this.httpServer = new McpHttpServer(protocol, new McpAuthenticator(tokens, commandPermission()));
+
+        getCommandRegistry().registerCommand(new PrefabMcpCommand(httpServer, tokens, commandPermission()));
         // Logged because the node is derived, not written down anywhere an admin can read, and it is
         // the one thing they need in order to grant the command to someone.
         getLogger().at(Level.INFO).log("Registered /%s (permission: %s)",
@@ -97,10 +107,6 @@ public final class McpPlugin extends JavaPlugin {
 
     private void onBoot() {
         refreshCatalog(false);
-
-        // Written on first load with the defaults filled in, so there is always a file to edit.
-        McpConfig config = McpConfig.loadOrCreate(getDataDirectory(), defaultPort(),
-            message -> getLogger().at(Level.WARNING).log("%s", message));
 
         int port = portOverride() != null ? portOverride() : config.port();
 
