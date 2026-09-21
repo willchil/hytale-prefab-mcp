@@ -11,6 +11,7 @@ import com.hypixel.hytale.server.core.event.events.BootEvent;
 import com.hypixel.hytale.server.core.event.events.ShutdownEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import games.crescentnetwork.mcp.command.PrefabMcpCommand;
 import games.crescentnetwork.mcp.http.McpHttpServer;
 import games.crescentnetwork.mcp.mcp.McpProtocol;
 import games.crescentnetwork.mcp.mcp.McpServices;
@@ -57,6 +58,12 @@ public final class McpPlugin extends JavaPlugin {
         McpProtocol protocol = new McpProtocol(tools);
         this.httpServer = new McpHttpServer(protocol);
 
+        getCommandRegistry().registerCommand(new PrefabMcpCommand(httpServer, commandPermission()));
+        // Logged because the node is derived, not written down anywhere an admin can read, and it is
+        // the one thing they need in order to grant the command to someone.
+        getLogger().at(Level.INFO).log("Registered /%s (permission: %s)",
+            PrefabMcpCommand.NAME, commandPermission());
+
         // Assets are loaded by the time BootEvent fires, so the palette can be read then and not before.
         getEventRegistry().register(BootEvent.class, event -> onBoot());
 
@@ -66,6 +73,21 @@ public final class McpPlugin extends JavaPlugin {
         getEventRegistry().register(LoadedAssetsEvent.class, Fluid.class, this::onFluidAssetsLoaded);
 
         getEventRegistry().register((short) -36, ShutdownEvent.class, event -> shutdownServer());
+    }
+
+    /**
+     * The permission a sender needs to run {@code /prefab-mcp}.
+     *
+     * <p>Derived from the plugin's own base permission rather than written out, so it follows the
+     * manifest's Group and Name instead of drifting from them. Resolves to
+     * {@code games.crescentnetwork.prefabmcp.command}.
+     *
+     * <p>Not attached to any built-in permission group, so it has to be granted deliberately. The
+     * {@code hytale:Admin} group holds a wildcard and therefore already has it, which is why a
+     * singleplayer owner can run the command without configuring anything.
+     */
+    public String commandPermission() {
+        return getBasePermission() + ".command";
     }
 
     @Override

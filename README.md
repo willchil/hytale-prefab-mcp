@@ -28,7 +28,29 @@ Start the server and look for:
 [PrefabMcp|P] MCP server listening on http://127.0.0.1:8765/mcp
 ```
 
-Then point an agent at it:
+Run `/prefab-mcp` in game or on the server console and it prints the configuration to paste,
+with the address the listener actually took:
+
+```
+MCP server listening on port 8765
+Add this to your MCP client configuration, replacing <server-host> with this server's
+address (127.0.0.1 if it is the same machine as the agent):
+{
+  "mcpServers": {
+    "hytale-prefab": {
+      "type": "http",
+      "url": "http://<server-host>:8765/mcp"
+    }
+  }
+}
+```
+
+The port is known; the host is not. Where the agent runs relative to the server, and whether a
+reverse proxy or DNS name sits in front, is not something the server can see, so it asks rather than
+guesses. Note that the listener is bound to loopback, so today the answer is `127.0.0.1` and a remote
+agent needs a tunnel: `ssh -L 8765:127.0.0.1:8765 user@server`.
+
+Or point an agent at it directly:
 
 ```
 claude mcp add --transport http hytale-prefab http://127.0.0.1:8765/mcp
@@ -36,6 +58,19 @@ claude mcp add --transport http hytale-prefab http://127.0.0.1:8765/mcp
 
 The listener binds to loopback only, and refuses requests carrying a cross-origin `Origin` header, so
 it is reachable by an agent on the same machine and by nothing else.
+
+### Permission
+
+`/prefab-mcp` requires `games.crescentnetwork.prefabmcp.command`, derived from the manifest's `Group`
+and `Name` so it follows them rather than drifting. The node is logged at startup:
+
+```
+[PrefabMcp|P] Registered /prefab-mcp (permission: games.crescentnetwork.prefabmcp.command)
+```
+
+It is not attached to any built-in permission group, so it has to be granted deliberately. The
+`hytale:Admin` group carries a `*` wildcard and therefore already has it, which is why a singleplayer
+owner can run the command without configuring anything.
 
 ### Configuration
 
@@ -122,26 +157,6 @@ writes to a coordinate replace earlier ones.
 
 Output is sparse: only cells the script placed are written, so pasting overlays terrain rather than
 clearing a box around the build. Hytale's paste UI has an air-override toggle for the other case.
-
-## Why GraalJS and not Rhino
-
-Rhino is two orders of magnitude smaller and was the original choice. It is not usable here.
-
-In Rhino 1.8.0 and 1.8.1, a `const` declared inside a loop body keeps its first iteration's value
-forever, in every combination of interpreted or compiled mode and language version:
-
-```
-const doubled = i * 2   ->   0:0  1:0  2:0  3:0      Rhino
-let   doubled = i * 2   ->   0:0  1:2  2:4  3:6      Rhino
-const doubled = i * 2   ->   0:0  1:2  2:4  3:6      GraalJS
-```
-
-Rhino's `let` also has no per-iteration closure capture. Neither raises an error, so the only symptom
-is a build that is quietly wrong, and model-written scripts use both constantly. `EngineSemanticsTest`
-locks this in.
-
-GraalJS costs about 33MB in the shaded jar. ICU4J is a hard dependency and cannot be excluded;
-`js-language` fails to initialise without it.
 
 ## Rendering
 

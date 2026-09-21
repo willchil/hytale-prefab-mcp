@@ -117,8 +117,24 @@ public final class McpHttpServer {
         return boundPort;
     }
 
+    /** Whether the listener is up, so callers can report the address rather than guess at it. */
+    public boolean isRunning() {
+        return server != null && boundPort > 0;
+    }
+
     public String url() {
-        return "http://127.0.0.1:" + boundPort + ENDPOINT;
+        return urlFor("127.0.0.1");
+    }
+
+    /**
+     * The endpoint URL as reached through {@code host}.
+     *
+     * <p>The port is known, the host is not: the listener is bound to loopback, and the address a
+     * client should actually use depends on where that client runs relative to this server. Callers
+     * pass either a concrete host or a placeholder for the operator to fill in.
+     */
+    public String urlFor(String host) {
+        return "http://" + host + ":" + boundPort + ENDPOINT;
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {
