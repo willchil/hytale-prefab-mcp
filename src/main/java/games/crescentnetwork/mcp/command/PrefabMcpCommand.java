@@ -55,9 +55,6 @@ public final class PrefabMcpCommand extends AbstractCommand {
      */
     private static final String HOST_PLACEHOLDER = "<server-host>";
 
-    /** The page shows the configuration in a single-line field, so it goes in without the newlines. */
-    private static final Gson COMPACT = new GsonBuilder().disableHtmlEscaping().create();
-
     private final McpHttpServer server;
     private final McpTokens tokens;
     private final McpAuthenticator authenticator;
@@ -135,7 +132,7 @@ public final class PrefabMcpCommand extends AbstractCommand {
         }
         if (world == null) return false;
 
-        String json = COMPACT.toJson(configurationJson(server.urlFor(HOST_PLACEHOLDER), token));
+        String json = GSON.toJson(configurationJson(server.urlFor(HOST_PLACEHOLDER), token));
 
         // Entity components may only be touched on their world's thread. Reading them from the
         // command thread is what stopped this opening at all, and it failed silently because there

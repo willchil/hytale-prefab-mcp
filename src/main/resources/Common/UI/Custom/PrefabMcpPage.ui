@@ -7,6 +7,15 @@
 // whether the token section is shown.
 $C = "Common.ui";
 
+@MultilineTextField = MultilineTextField {
+  Style: $C.@DefaultInputFieldStyle;
+  PlaceholderStyle: $C.@DefaultInputFieldPlaceholderStyle;
+  Background: $C.@InputBoxBackground;
+  AutoGrow: false;
+  Padding: (Horizontal: 10, Vertical: 8);
+  ScrollbarStyle: $C.@DefaultScrollbarStyle;
+};
+
 $C.@PageOverlay {
   LayoutMode: Middle;
 
@@ -36,8 +45,9 @@ $C.@PageOverlay {
         Style: (...$C.@DefaultLabelStyle, RenderBold: true);
       }
 
-      $C.@TextField #Config {
-        @Anchor = (Left: 0, Right: 0, Bottom: 14);
+      @MultilineTextField #Config {
+        Anchor: (Left: 0, Right: 0, Height: 190, Bottom: 14);
+        MaxLength: 4096;
       }
 
       Group #TokenSection {

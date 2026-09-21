@@ -1,9 +1,13 @@
 package games.crescentnetwork.mcp.command;
 
+import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
-import com.hypixel.hytale.server.core.entity.entities.player.pages.CustomUIPage;
+import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
+import com.hypixel.hytale.protocol.packets.interface_.Page;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
@@ -23,7 +27,7 @@ import javax.annotation.Nullable;
  * <p>Read-only by nature rather than by flag: the page sends no event bindings, so whatever a player
  * types locally goes nowhere and re-running the command restores it.
  */
-public final class PrefabMcpPage extends CustomUIPage {
+public final class PrefabMcpPage extends InteractiveCustomUIPage<PrefabMcpPage.PageEventData> {
 
     /** Relative to {@code Common/UI/Custom/} in this plugin's asset pack. */
     private static final String LAYOUT = "PrefabMcpPage.ui";
@@ -33,12 +37,12 @@ public final class PrefabMcpPage extends CustomUIPage {
     private final String token;
 
     /**
-     * @param configurationJson the client configuration, as one line so it fits a single-line field
+    * @param configurationJson the pretty-printed client configuration
      * @param token             the player's personal token, or null when the server requires none
      */
     public PrefabMcpPage(@Nonnull PlayerRef playerRef, @Nonnull String configurationJson,
                          @Nullable String token) {
-        super(playerRef, CustomPageLifetime.CanDismiss);
+        super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, PageEventData.CODEC);
         this.configurationJson = configurationJson;
         this.token = token;
     }
@@ -56,5 +60,22 @@ public final class PrefabMcpPage extends CustomUIPage {
         if (hasToken) {
             commandBuilder.set("#Token.Value", token);
         }
+
+        eventBuilder.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton");
+    }
+
+    @Override
+    public void handleDataEvent(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store,
+                                @Nonnull PageEventData data) {
+        Player player = store.getComponent(ref, Player.getComponentType());
+        if (player != null) {
+            player.getPageManager().setPage(ref, store, Page.None);
+        }
+    }
+
+    public static final class PageEventData {
+        public static final BuilderCodec<PageEventData> CODEC = BuilderCodec
+            .builder(PageEventData.class, PageEventData::new)
+            .build();
     }
 }
