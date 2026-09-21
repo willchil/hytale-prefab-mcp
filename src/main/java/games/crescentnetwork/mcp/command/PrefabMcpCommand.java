@@ -7,6 +7,7 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import games.crescentnetwork.mcp.McpConfig;
+import games.crescentnetwork.mcp.auth.McpAuthenticator;
 import games.crescentnetwork.mcp.auth.McpTokens;
 import games.crescentnetwork.mcp.http.McpHttpServer;
 import games.crescentnetwork.mcp.mcp.McpProtocol;
@@ -29,7 +30,7 @@ public final class PrefabMcpCommand extends AbstractCommand {
     public static final String NAME = "prefab-mcp";
 
     // HTML escaping is off because this is a config file, not markup: with it on, the angle brackets
-    // of the host placeholder come out as < and > and the block cannot be pasted as-is.
+    // of the host placeholder come out as escape sequences and the block cannot be pasted as-is.
     private static final Gson GSON = new GsonBuilder()
         .setPrettyPrinting()
         .disableHtmlEscaping()
@@ -46,16 +47,16 @@ public final class PrefabMcpCommand extends AbstractCommand {
 
     private final McpHttpServer server;
     private final McpTokens tokens;
-    private final String permission;
+    private final McpAuthenticator authenticator;
 
     public PrefabMcpCommand(@Nonnull McpHttpServer server, @Nonnull McpTokens tokens,
-                            @Nonnull String permission) {
-        super(NAME, "Show your personal MCP client configuration for this server");
+                            @Nonnull McpAuthenticator authenticator) {
+        super(NAME, "Show the MCP client configuration for this server");
         this.server = server;
         this.tokens = tokens;
-        this.permission = permission;
+        this.authenticator = authenticator;
         // Must be declared before the command is registered.
-        requirePermission(permission);
+        requirePermission(authenticator.permission());
     }
 
     @Nullable
@@ -71,12 +72,22 @@ public final class PrefabMcpCommand extends AbstractCommand {
         context.sendMessage(Message.raw("MCP server listening on port " + server.boundPort())
             .color(Color.GREEN));
 
+        if (!authenticator.requiresToken()) {
+            // Open mode: the config is the same for everyone, so the console can print it too.
+            context.sendMessage(Message.raw(
+                "This server does not require a personal token, so this configuration works for "
+                    + "anyone who can reach it. Set \"" + McpConfig.REQUIRE_PERSONAL_TOKEN
+                    + "\": true in " + McpConfig.FILE_NAME + " to require one.").color(Color.YELLOW));
+            printConfiguration(context, null);
+            return CompletableFuture.completedFuture(null);
+        }
+
         if (!context.isPlayer()) {
             // The console has no account, so there is no player for a token to authorise. Minting one
             // here would mean issuing a credential that answers to nobody.
             context.sendMessage(Message.raw(
                 "Tokens are per player, so run this in game to get yours. Every request needs the "
-                    + "token of a player holding " + permission + ".").color(Color.YELLOW));
+                    + "token of a player holding " + authenticator.permission() + ".").color(Color.YELLOW));
             return CompletableFuture.completedFuture(null);
         }
 
@@ -86,6 +97,12 @@ public final class PrefabMcpCommand extends AbstractCommand {
         context.sendMessage(Message.raw(
             "This token is personal to you. Anyone who has it can build on this server as you, so "
                 + "do not share it or paste it anywhere public.").color(Color.YELLOW));
+        printConfiguration(context, token);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /** @param token the caller's personal token, or null when the server does not require one */
+    private void printConfiguration(CommandContext context, @Nullable String token) {
         context.sendMessage(Message.raw("Add this to your MCP client configuration, replacing "
             + HOST_PLACEHOLDER + " with this server's address (127.0.0.1 if it is the same machine "
             + "as the agent):"));
@@ -94,7 +111,6 @@ public final class PrefabMcpCommand extends AbstractCommand {
         for (String line : GSON.toJson(configurationJson(server.urlFor(HOST_PLACEHOLDER), token)).split("\n")) {
             context.sendMessage(Message.raw(line).color(Color.LIGHT_GRAY));
         }
-        return CompletableFuture.completedFuture(null);
     }
 
     /**
@@ -103,14 +119,17 @@ public final class PrefabMcpCommand extends AbstractCommand {
      * <p>Built with Gson rather than concatenated so the output is valid JSON whatever the address
      * and token turn out to be, and so it can be pasted without touching it.
      */
-    static JsonObject configurationJson(String url, String token) {
-        JsonObject headers = new JsonObject();
-        headers.addProperty("Authorization", "Bearer " + token);
-
+    static JsonObject configurationJson(String url, @Nullable String token) {
         JsonObject entry = new JsonObject();
         entry.addProperty("type", "http");
         entry.addProperty("url", url);
-        entry.add("headers", headers);
+        // The headers block is omitted entirely when no token is needed, rather than left empty: the
+        // printed config should be exactly what this server accepts, with nothing to delete.
+        if (token != null) {
+            JsonObject headers = new JsonObject();
+            headers.addProperty("Authorization", "Bearer " + token);
+            entry.add("headers", headers);
+        }
 
         JsonObject servers = new JsonObject();
         servers.add(McpProtocol.SERVER_NAME, entry);

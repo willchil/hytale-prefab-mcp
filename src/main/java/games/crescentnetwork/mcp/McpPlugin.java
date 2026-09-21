@@ -65,10 +65,13 @@ public final class McpPlugin extends JavaPlugin {
             message -> getLogger().at(Level.WARNING).log("%s", message));
         this.tokens = new McpTokens(config.tokenSecret());
 
-        McpProtocol protocol = new McpProtocol(tools);
-        this.httpServer = new McpHttpServer(protocol, new McpAuthenticator(tokens, commandPermission()));
+        McpAuthenticator authenticator =
+            new McpAuthenticator(tokens, commandPermission(), config.requirePersonalToken());
 
-        getCommandRegistry().registerCommand(new PrefabMcpCommand(httpServer, tokens, commandPermission()));
+        McpProtocol protocol = new McpProtocol(tools);
+        this.httpServer = new McpHttpServer(protocol, authenticator);
+
+        getCommandRegistry().registerCommand(new PrefabMcpCommand(httpServer, tokens, authenticator));
         // Logged because the node is derived, not written down anywhere an admin can read, and it is
         // the one thing they need in order to grant the command to someone.
         getLogger().at(Level.INFO).log("Registered /%s (permission: %s)",
@@ -107,6 +110,19 @@ public final class McpPlugin extends JavaPlugin {
 
     private void onBoot() {
         refreshCatalog(false);
+
+        // Stated plainly at boot: whether the endpoint is open is the thing an operator most needs
+        // to know, and it is not obvious from anywhere else.
+        if (config.requirePersonalToken()) {
+            getLogger().at(Level.INFO).log(
+                "Personal tokens required; every request needs the token of a player holding %s",
+                commandPermission());
+        } else {
+            getLogger().at(Level.INFO).log(
+                "Personal tokens NOT required: anyone who can reach the endpoint may use every tool. "
+                    + "Set \"%s\": true in %s to require one.",
+                McpConfig.REQUIRE_PERSONAL_TOKEN, McpConfig.FILE_NAME);
+        }
 
         int port = portOverride() != null ? portOverride() : config.port();
 

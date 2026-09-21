@@ -25,16 +25,28 @@ public final class McpConfig {
 
     public static final String PORT = "port";
     public static final String TOKEN_SECRET = "tokenSecret";
+    public static final String REQUIRE_PERSONAL_TOKEN = "requirePersonalToken";
+
+    /**
+     * Whether a fresh server demands a personal token.
+     *
+     * <p>Off, so a new server works the moment it boots. The listener is bound to loopback, so
+     * reaching it already means being on the machine; turning this on is what matters once the
+     * endpoint is shared, whether through a tunnel or a proxy.
+     */
+    private static final boolean DEFAULT_REQUIRE_PERSONAL_TOKEN = false;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     private final int port;
     private final String tokenSecret;
+    private final boolean requirePersonalToken;
     private final JsonObject raw;
 
-    private McpConfig(int port, String tokenSecret, JsonObject raw) {
+    private McpConfig(int port, String tokenSecret, boolean requirePersonalToken, JsonObject raw) {
         this.port = port;
         this.tokenSecret = tokenSecret;
+        this.requirePersonalToken = requirePersonalToken;
         this.raw = raw;
     }
 
@@ -50,6 +62,16 @@ public final class McpConfig {
      */
     public String tokenSecret() {
         return tokenSecret;
+    }
+
+    /**
+     * Whether a caller must present a personal token.
+     *
+     * <p>When off, anyone who can reach the endpoint may use every tool, and {@link #tokenSecret()}
+     * sits unused until it is switched on.
+     */
+    public boolean requirePersonalToken() {
+        return requirePersonalToken;
     }
 
     /** The parsed file as-is, so a caller can read a key this class does not model yet. */
@@ -124,8 +146,20 @@ public final class McpConfig {
             dirty = true;
         }
 
+        boolean requireToken = DEFAULT_REQUIRE_PERSONAL_TOKEN;
+        if (contents.has(REQUIRE_PERSONAL_TOKEN)) {
+            try {
+                requireToken = contents.get(REQUIRE_PERSONAL_TOKEN).getAsBoolean();
+            } catch (RuntimeException e) {
+                onProblem.report("Ignoring invalid \"" + REQUIRE_PERSONAL_TOKEN + "\" in " + FILE_NAME);
+            }
+        } else {
+            contents.addProperty(REQUIRE_PERSONAL_TOKEN, requireToken);
+            dirty = true;
+        }
+
         if (dirty) write(file, contents, onProblem);
-        return new McpConfig(port, secret, contents);
+        return new McpConfig(port, secret, requireToken, contents);
     }
 
     private static void write(Path file, JsonObject contents, Problems onProblem) {

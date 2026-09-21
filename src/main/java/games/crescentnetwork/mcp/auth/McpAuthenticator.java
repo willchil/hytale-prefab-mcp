@@ -8,12 +8,16 @@ import java.util.UUID;
 /**
  * Decides whether a request may use the MCP tools.
  *
- * <p>Two separate questions, in order: the token says which player is calling, and the permission
- * system says whether that player is allowed. Keeping them apart means revoking the permission
- * revokes MCP access immediately, without having to rotate the secret and re-issue everyone's token.
+ * <p>When personal tokens are required, two separate questions are asked in order: the token says
+ * which player is calling, and the permission system says whether that player is allowed. Keeping
+ * them apart means revoking the permission revokes MCP access immediately, without having to rotate
+ * the secret and re-issue everyone's token.
  *
  * <p>The permission is resolved through groups and wildcards rather than looked for as a direct
  * grant, and resolves for a player who is not online, so a token keeps working between sessions.
+ *
+ * <p>When tokens are not required, every caller is allowed through anonymously and the header is not
+ * read at all. The listener is bound to loopback, so reaching it already means being on the machine.
  */
 public final class McpAuthenticator {
 
@@ -34,35 +38,49 @@ public final class McpAuthenticator {
         }
     }
 
-    /** Either an authenticated player, or the reason there is not one. */
-    public record Outcome(@Nullable UUID player, @Nullable Failure failure) {
-        public boolean allowed() {
-            return player != null;
+    /**
+     * Whether the request may proceed, and who it is for.
+     *
+     * <p>{@code player} is null for an anonymous caller, which is a normal outcome when tokens are
+     * not required, so being allowed is tracked separately from being identified.
+     */
+    public record Outcome(boolean allowed, @Nullable UUID player, @Nullable Failure failure) {
+        static Outcome anonymous() {
+            return new Outcome(true, null, null);
         }
 
         static Outcome of(UUID player) {
-            return new Outcome(player, null);
+            return new Outcome(true, player, null);
         }
 
         static Outcome refused(Failure failure) {
-            return new Outcome(null, failure);
+            return new Outcome(false, null, failure);
         }
     }
 
     private final McpTokens tokens;
     private final String permission;
+    private final boolean requireToken;
 
-    public McpAuthenticator(McpTokens tokens, String permission) {
+    public McpAuthenticator(McpTokens tokens, String permission, boolean requireToken) {
         this.tokens = tokens;
         this.permission = permission;
+        this.requireToken = requireToken;
     }
 
     public String permission() {
         return permission;
     }
 
+    /** Whether a caller must present a personal token, from {@code requirePersonalToken}. */
+    public boolean requiresToken() {
+        return requireToken;
+    }
+
     /** @param authorizationHeader the raw {@code Authorization} header, or null if absent */
     public Outcome authenticate(@Nullable String authorizationHeader) {
+        if (!requireToken) return Outcome.anonymous();
+
         String token = McpTokens.fromAuthorizationHeader(authorizationHeader);
         if (token == null) return Outcome.refused(Failure.MISSING);
 

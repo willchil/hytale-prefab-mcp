@@ -66,7 +66,28 @@ it is reachable by an agent on the same machine and by nothing else.
 
 ### Authentication
 
-Every MCP request must carry the personal token of a player who holds the permission below:
+Off by default. A new server sets `requirePersonalToken` to `false`, so it works the moment it boots:
+the listener is bound to loopback, so reaching it already means being on the machine. Turning it on
+is what matters once the endpoint is shared, through a tunnel or a proxy.
+
+```json
+{ "requirePersonalToken": true }
+```
+
+Which mode is active is stated at boot, since it is not obvious from anywhere else:
+
+```
+[PrefabMcp|P] Personal tokens NOT required: anyone who can reach the endpoint may use every tool.
+              Set "requirePersonalToken": true in mcp.json to require one.
+```
+
+`/prefab-mcp` prints whichever configuration that server actually accepts: with the `headers` block
+when a token is needed, without it when one is not, so there is never anything to delete from what it
+gives you. While tokens are off, `tokenSecret` sits unused but is still generated and kept, so
+switching over later does not change anyone's token.
+
+When `requirePersonalToken` is `true`, every MCP request must carry the personal token of a player who
+holds the permission below:
 
 ```
 Authorization: Bearer <player-uuid>.<signature>
@@ -84,6 +105,7 @@ wildcards and work for offline players, so a token keeps working between session
 
 | Request | Response |
 |---|---|
+| Any request, while `requirePersonalToken` is `false` | `200`, anonymously |
 | No `Authorization` header | `401` with a `WWW-Authenticate` challenge |
 | Token that does not verify | `401` |
 | Valid token, player lacks the permission | `403` |
@@ -115,7 +137,8 @@ On first load the plugin writes `mods/games.crescentnetwork_PrefabMcp/mcp.json`:
 ```json
 {
   "port": 7520,
-  "tokenSecret": "rK-FDBd0xT66CRThXuR30VQDwpj6D3-iSFveyJLinJw"
+  "tokenSecret": "rK-FDBd0xT66CRThXuR30VQDwpj6D3-iSFveyJLinJw",
+  "requirePersonalToken": false
 }
 ```
 
