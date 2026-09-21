@@ -1,4 +1,4 @@
-# HytaleMcp
+# PrefabMcp
 
 Hosts an [MCP](https://modelcontextprotocol.io) server inside a Hytale server so an agentic harness
 can author prefabs against that server's own live block palette.
@@ -18,14 +18,14 @@ Needs Java 25 and Maven.
 
 ```
 mvn package
-cp target/HytaleMcp-1.0.0.jar <server>/mods/
+cp target/PrefabMcp-1.0.0.jar <server>/mods/
 ```
 
 Start the server and look for:
 
 ```
-[HytaleMcp|P] Palette snapshot: 2981 blocks and fluids
-[HytaleMcp|P] MCP server listening on http://127.0.0.1:8765/mcp
+[PrefabMcp|P] Palette snapshot: 2981 blocks and fluids
+[PrefabMcp|P] MCP server listening on http://127.0.0.1:8765/mcp
 ```
 
 Then point an agent at it:
@@ -37,11 +37,29 @@ claude mcp add --transport http hytale-prefab http://127.0.0.1:8765/mcp
 The listener binds to loopback only, and refuses requests carrying a cross-origin `Origin` header, so
 it is reachable by an agent on the same machine and by nothing else.
 
-### Port
+### Configuration
 
-In order of precedence: `-Dhytale.mcp.port=<n>`, then `port` in `mods/dev.hytalemodding_HytaleMcp/mcp.json`,
-then the game's bind port + 2000. The offset means several server instances side by side do not
-collide. Set `{"enabled": false}` in that file to leave the listener off.
+On first load the plugin writes `mods/games.crescentnetwork_PrefabMcp/mcp.json`:
+
+```json
+{
+  "port": 7520
+}
+```
+
+The port it starts with is the game's own bind port plus 2000, so several servers on one machine do
+not collide. After that the file is the source of truth and is never rewritten, so an edit survives a
+restart and keys this version does not recognise are left alone.
+
+That matters most for a **singleplayer world**, which the client launches on an ephemeral port that
+changes every time. The first load picks whatever the offset gives that session and writes it down;
+from then on the address is fixed. If you want to choose it yourself, edit `port` and restart — and if
+you are setting up an agent against it, do that first so the address never moves.
+
+`-Dhytale.mcp.port=<n>` overrides the file for one run without writing back to it.
+
+If the chosen port is already taken the plugin logs a warning and stays off rather than quietly
+binding somewhere else, because a server on an address nobody is pointed at is worse than no server.
 
 ## The palette is live
 

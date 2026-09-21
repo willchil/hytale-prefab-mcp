@@ -1,11 +1,11 @@
 {
-  "Group": "dev.hytalemodding",
-  "Name": "HytaleMcp",
+  "Group": "games.crescentnetwork",
+  "Name": "PrefabMcp",
   "Version": "1.0.0",
   "Description": "Hosts an MCP server so agentic harnesses can search the live block palette and author prefabs",
   "Authors": [
     {
-      "Name": "William Chilcote"
+      "Name": "willchil"
     }
   ],
   "ServerVersion": "^${hytale.server.version}",
@@ -13,5 +13,5 @@
   "OptionalDependencies": {},
   "DisabledByDefault": false,
   "IncludesAssetPack": false,
-  "Main": "dev.hytalemodding.mcp.McpPlugin"
+  "Main": "games.crescentnetwork.mcp.McpPlugin"
 }
