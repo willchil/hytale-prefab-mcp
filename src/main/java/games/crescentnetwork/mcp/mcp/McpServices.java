@@ -2,6 +2,7 @@ package games.crescentnetwork.mcp.mcp;
 
 import games.crescentnetwork.mcp.palette.BlockCatalog;
 import games.crescentnetwork.mcp.render.TextureCache;
+import games.crescentnetwork.mcp.render.model.ModelLibrary;
 import games.crescentnetwork.mcp.script.BuildRecorder;
 
 import javax.annotation.Nullable;
@@ -9,7 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Shared state the tools read: the palette snapshot, decoded textures, and recently built prefabs. */
+/**
+ * Shared state the tools read: the palette snapshot, decoded textures and models, and recently built
+ * prefabs.
+ */
 public final class McpServices {
 
     /**
@@ -20,6 +24,7 @@ public final class McpServices {
 
     private final AtomicReference<BlockCatalog> catalog = new AtomicReference<>();
     private final TextureCache textures = new TextureCache();
+    private final ModelLibrary models = new ModelLibrary(textures);
 
     /** Access is synchronised on the map itself; tools run on the HTTP pool's threads. */
     private final Map<String, BuildRecorder> recentBuilds =
@@ -40,12 +45,17 @@ public final class McpServices {
 
     public void setCatalog(BlockCatalog snapshot) {
         catalog.set(snapshot);
-        // Assets may have been reskinned, so previously decoded textures can be stale.
+        // Assets may have been reskinned or remodelled, so anything decoded before can be stale.
         textures.clear();
+        models.clear();
     }
 
     public TextureCache textures() {
         return textures;
+    }
+
+    public ModelLibrary models() {
+        return models;
     }
 
     /**

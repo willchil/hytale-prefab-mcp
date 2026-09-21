@@ -47,9 +47,10 @@ public final class RenderPrefabTool implements McpTool {
             angles before deciding a build is finished, since silhouettes hide a lot.
 
             Rendering happens on the server with a plain raycaster. Cubic blocks show their real face \
-            textures; blocks drawn from a custom model have no face texture and appear as solid cubes \
-            in their average colour, so thin things like ropes, torches and plants look chunkier here \
-            than in game. Treat it as a massing and proportion check, not a screenshot.""";
+            textures, and blocks drawn from a custom model (roofs, poles, plants, furniture) show their \
+            real model geometry and texture at the rotation you placed them with, including parts that \
+            reach into neighbouring cells. There is no shadowing, light level or biome tint, so treat \
+            it as a check of shape, orientation and proportion rather than a screenshot.""";
     }
 
     @Override
@@ -124,7 +125,7 @@ public final class RenderPrefabTool implements McpTool {
                 + " pixels. Ask for a smaller image.");
         }
 
-        VoxelScene scene = VoxelScene.from(recorder, catalog);
+        VoxelScene scene = VoxelScene.from(recorder, catalog, services.models());
         double[] target = parseTarget(arguments, scene);
 
         double yaw = JsonRpc.doubleOr(arguments, "yaw", 45);

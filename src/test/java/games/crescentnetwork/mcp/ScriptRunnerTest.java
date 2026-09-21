@@ -303,4 +303,136 @@ class ScriptRunnerTest {
         assertEquals("placed the base", result.log().get(0));
         assertFalse(result.recorder().isEmpty());
     }
+
+    // ------------------------------------------------------------------ orientation
+
+    @Test
+    void yawAndPitchBecomeTheGamesRotationIndex() {
+        BuildRecorder recorder = run("""
+            block(0, 0, 0, 'Rock_Stone_Brick_Roof', { yaw: 90 });
+            block(1, 0, 0, 'Build_Black_Stairs', { yaw: 270, pitch: 180 });
+            block(2, 0, 0, 'Rock_Iridescent_Brick_Beam', { pitch: 90 });
+            block(3, 0, 0, 'Rock_Iridescent_Brick_Beam', { yaw: 90, pitch: 90 });
+            block(4, 0, 0, 'Rock_Stone_Brick_Roof', { yaw: -90 });
+            block(5, 0, 0, 'Rock_Stone');
+            """);
+        assertEquals(1, recorder.blockAt(0, 0, 0).rotation());
+        assertEquals(11, recorder.blockAt(1, 0, 0).rotation());
+        assertEquals(4, recorder.blockAt(2, 0, 0).rotation());
+        assertEquals(5, recorder.blockAt(3, 0, 0).rotation());
+        assertEquals(3, recorder.blockAt(4, 0, 0).rotation(), "-90 is the same turn as 270");
+        assertEquals(0, recorder.blockAt(5, 0, 0).rotation());
+    }
+
+    @Test
+    void anythingButAQuarterTurnIsRejected() {
+        ScriptError error = failure("block(0, 0, 0, 'Rock_Stone_Brick_Roof', { yaw: 45 });");
+        assertEquals(ScriptError.Phase.RUNTIME, error.phase());
+        assertTrue(error.getMessage().contains("yaw must be 0, 90, 180 or 270"), error.getMessage());
+    }
+
+    @Test
+    void unsupportedRotationNamesTheOnesThatWork() {
+        ScriptError roof = failure("block(0, 0, 0, 'Rock_Stone_Brick_Roof', { pitch: 180 });");
+        assertTrue(roof.getMessage().contains("cannot be placed at yaw 0, pitch 180"), roof.getMessage());
+        assertTrue(roof.getMessage().contains("supports yaw 0/90/180/270"), roof.getMessage());
+
+        ScriptError beam = failure("block(0, 0, 0, 'Rock_Iridescent_Brick_Beam', { yaw: 180, pitch: 90 });");
+        assertTrue(beam.getMessage().contains("pitch 0 with yaw 0; pitch 90 with yaw 0/90"), beam.getMessage());
+
+        ScriptError stone = failure("block(0, 0, 0, 'Rock_Stone', { yaw: 90 });");
+        assertTrue(stone.getMessage().contains("no rotation"), stone.getMessage());
+        assertEquals(1, stone.line(), "points at the offending call");
+    }
+
+    @Test
+    void theOldRotationIndexPointsAtYawAndPitch() {
+        ScriptError error = failure("block(0, 0, 0, 'Rock_Stone_Brick_Roof', { rotation: 1 });");
+        assertTrue(error.getMessage().contains("replaced by yaw and pitch"), error.getMessage());
+    }
+
+    @Test
+    void mirrorTurnsBlocksToFaceTheOtherWay() {
+        BuildRecorder recorder = run("""
+            block(1, 0, 0, 'Rock_Stone_Brick_Roof', { yaw: 90 });
+            block(1, 0, 3, 'Build_Black_Stairs', { yaw: 90, pitch: 180 });
+            block(1, 0, 6, 'Build_Black_Stairs', { pitch: 180 });
+            mirrorX(0);
+            """);
+        // A roof rising to the west rises to the east once mirrored across X.
+        assertEquals(3, recorder.blockAt(-1, 0, 0).rotation());
+        // Flipping comes back rolled; it must fold into the equivalent upside-down yaw, not drop the pitch.
+        assertEquals(11, recorder.blockAt(-1, 0, 3).rotation());
+        assertEquals(8, recorder.blockAt(-1, 0, 6).rotation());
+    }
+
+    // ------------------------------------------------------------------ multi-cell blocks
+
+    @Test
+    void multiCellBlockCannotShareItsFootprint() {
+        ScriptError error = failure("""
+            block(0, 0, 0, 'Rock_Stone_Brick_Roof_Shallow');
+            block(0, 0, -1, 'Rock_Stone');
+            """);
+        assertEquals(ScriptError.Phase.VALIDATE, error.phase());
+        assertTrue(error.getMessage().contains("Rock_Stone_Brick_Roof_Shallow at (0, 0, 0) (yaw 0) fills 1x1x2 cells"),
+            error.getMessage());
+        assertTrue(error.getMessage().contains("(0, 0, -1) already holds Rock_Stone"), error.getMessage());
+    }
+
+    @Test
+    void footprintTurnsWithYaw() {
+        // At yaw 90 the roof reaches west instead of north, so the cell to its north is free.
+        run("""
+            block(0, 0, 0, 'Rock_Stone_Brick_Roof_Shallow', { yaw: 90 });
+            block(0, 0, -1, 'Rock_Stone');
+            """);
+        ScriptError error = failure("""
+            block(0, 0, 0, 'Rock_Stone_Brick_Roof_Shallow', { yaw: 90 });
+            block(-1, 0, 0, 'Rock_Stone');
+            """);
+        assertTrue(error.getMessage().contains("(-1, 0, 0) already holds Rock_Stone"), error.getMessage());
+    }
+
+    @Test
+    void twoFootprintsCannotOverlap() {
+        ScriptError error = failure("""
+            block(0, 0, 0, 'Rock_Stone_Brick_Roof_Shallow');
+            block(0, 0, -2, 'Rock_Stone_Brick_Roof_Shallow', { yaw: 180 });
+            """);
+        assertTrue(error.getMessage().contains("(0, 0, -1) is also filled by Rock_Stone_Brick_Roof_Shallow"),
+            error.getMessage());
+    }
+
+    @Test
+    void fluidMayFillAFootprint() {
+        BuildRecorder recorder = run("""
+            block(0, 0, 0, 'Rock_Stone_Brick_Roof_Shallow');
+            box(-1, 0, -2, 1, 0, 1, 'Water_Source');
+            """);
+        assertEquals(1, recorder.blockCount());
+    }
+
+    @Test
+    void manyConflictsAreSummarised() {
+        ScriptError error = failure("""
+            box(0, 0, -1, 19, 0, -1, 'Rock_Stone');
+            for (let x = 0; x < 20; x++) block(x, 0, 0, 'Rock_Stone_Brick_Roof_Shallow');
+            """);
+        assertTrue(error.getMessage().contains("...and 10 more."), error.getMessage());
+    }
+
+    @Test
+    void adjacentMultiCellBlocksFit() {
+        // A gable: courses two cells apart never touch each other's footprints.
+        BuildRecorder recorder = run("""
+            for (let x = 0; x < 4; x++) {
+                block(x, 0, 0, 'Rock_Stone_Brick_Roof_Shallow', { yaw: 180 });
+                block(x, 0, 3, 'Rock_Stone_Brick_Roof_Shallow');
+                block(x, 1, 2, 'Rock_Stone_Brick_Roof');
+            }
+            block(10, 0, 0, 'Furniture_Ancient_Bed');
+            """);
+        assertEquals(13, recorder.blockCount());
+    }
 }

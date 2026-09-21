@@ -6,8 +6,8 @@ can author prefabs against that server's own live block palette.
 Four tools: search the palette, look at a block, run a build script, render the result.
 
 ```
-search_blocks   ->  real names from the running server, mods included
-get_block_texture -> face texture, or the inventory icon for model-drawn blocks
+search_blocks   ->  real names from the running server, mods included, with each block's size in cells
+get_block_texture -> face texture, or the inventory icon for model-drawn blocks, plus footprint and rotations
 build_prefab    ->  runs your JavaScript, writes prefabs/<name>.prefab.json
 render_prefab   ->  PNG from any camera angle, so the agent can see what it built
 ```
@@ -240,20 +240,68 @@ rng()                                               seeded, reproducible for a g
 log(message)                                        returned with the result
 ```
 
-`opts` carries `{rotation: n}` for blocks, `{level: n}` for fluids, `{hollow: true}` for the volume
+`opts` carries `{yaw, pitch}` for blocks, `{level: n}` for fluids, `{hollow: true}` for the volume
 primitives. Y must be between -512 and 511, because prefabs pack Y into nine signed bits. Later
 writes to a coordinate replace earlier ones.
 
-Output is sparse: only cells the script placed are written, so pasting overlays terrain rather than
-clearing a box around the build. Hytale's paste UI has an air-override toggle for the other case.
+Output is sparse: only cells the script placed are written, plus the filler cells multi-cell blocks
+need, so pasting overlays terrain rather than clearing a box around the build. Hytale's paste UI has
+an air-override toggle for the other case.
+
+## Orientation
+
+Blocks turn with `{yaw, pitch}` in degrees, each 0, 90, 180 or 270:
+
+```js
+block(0, 5, 0, 'Rock_Stone_Brick_Roof_Shallow', { yaw: 90 });   // rises toward the west
+block(0, 0, 0, 'Build_Black_Stairs', { yaw: 180, pitch: 180 });  // upside down, facing south
+block(3, 0, 0, 'Rock_Iridescent_Brick_Beam', { pitch: 90 });     // a beam laid on its side
+```
+
+Yaw turns a block about the vertical axis the same way Hytale turns its hitbox: whatever faces north
+(-Z) at yaw 0 faces west (-X) at yaw 90. Yaw alone is not enough. A survey of the block assets'
+`VariantRotation` found 521 yaw-only blocks, but also 236 roofs and stairs that flip upside down
+with pitch 180, 128 half slabs that stand on end with pitch 90, and 58 pipes and beams laid down
+with pitch 90. Roll is not exposed: only a single test block uses it.
+
+Each block allows only its own asset family's rotations. Asking for anything else fails the build
+with the valid combinations, rather than being snapped silently the way the game snaps a
+placement. `get_block_texture` lists them. The mirror helpers turn blocks as well as move them,
+through the same `BlockRotationUtil.getFlipped` the builder tools use, so a mirrored roof faces the
+other way.
+
+## Multi-cell blocks
+
+137 of the 244 hitbox assets reach past their own cell: shallow roofs (1x1x2), steep roofs (1x2x1),
+beds (up to 3x3x4), doors, benches, large paintings. Hytale takes a block's footprint from its hitbox,
+not its model, and fills the extra cells with filler that points back at the base cell.
+
+- `search_blocks` has a `cells` column, e.g. `1x1x2`, and `get_block_texture` lists exactly which
+  offsets a block fills at each rotation, along with how far its model really reaches.
+- `build_prefab` fails a build in which a footprint overlaps another block or another footprint,
+  naming the cells. Fluids may share a footprint.
+- The writer adds the filler cells with the server's own `BlockSelection.tryFixFiller`. Paste copies
+  cells as stored and never creates filler itself, and Hytale's prefab validator reports a multi-cell
+  block without its filler as broken.
 
 ## Rendering
 
 Hytale renders blocks on the client, so there is no server-side renderer to borrow. `render_prefab` is
-a plain raycaster: one ray per pixel, marched through the voxel grid, shaded from the face normal it
-entered through. Cubic blocks sample their real face texture. The roughly 1,784 model-drawn blocks
-have no face texture and render as solid cubes in their average colour, so thin geometry like ropes
-and torches looks chunkier than in game. It is a massing and proportion check, not a screenshot.
+a plain raycaster: one ray per pixel, marched through the voxel grid. Cubic blocks sample their real
+face texture on the face the ray entered.
+
+Model-drawn blocks are traced against their own `.blockymodel` geometry, turned to the rotation they
+were placed with. All 1,151 shipped block models are built from two shape types, boxes and quads, so a
+ray is tested against each shape in its own frame. A model is indexed in every cell its geometry
+reaches, so overhangs and multi-cell blocks are found wherever the ray first meets them. Textures are
+sampled with their alpha cut out, so a plant's crossed quads read as leaves rather than two squares.
+
+The node transform follows the server's `BlockyModelBoundsParser`, which says it mirrors the client.
+Face texture layout (offset, mirror, angle) follows the Hytale Blockbench plugin's importer, the only
+public reference. Across the shipped models that rule puts 40,545 of 40,600 face rectangles inside
+their textures; the rest are off by a texel at an edge. Renders of sample blocks match the game's own
+inventory icons. There is still no shadowing, light level or biome tint, so grass and leaves whose
+textures are greyscale until tinted render grey.
 
 Water gets its colour from the most common `WaterTint` across the loaded environments, multiplied
 into its texture average, because water ships a near-white greyscale texture and is tinted per-biome
@@ -277,5 +325,10 @@ under `AssetRegistry.ASSET_LOCK`.
 mvn test
 ```
 
-40 tests, no server required: the script engine and geometry run against a stand-in palette. Set
-`MCP_RENDER_DUMP=<dir>` to also write sample renders for eyeballing.
+No server required: the script engine and geometry run against a stand-in palette, and model tests
+build small models and textures in memory. Set `MCP_RENDER_DUMP=<dir>` to also write sample renders
+for eyeballing.
+
+Set `MCP_ASSETS_DIR` to a copy of the assets' `Common` folder to go further: every shipped model is
+parsed and baked at every rotation, and the render dump draws real roofs, stairs, beds, plants and a
+small house, each block beside the game's own inventory icon for comparison.

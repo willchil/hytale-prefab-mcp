@@ -137,6 +137,7 @@ public final class ScriptRunner {
                 "The script placed no blocks. Call block(), box(), line(), sphere(), cylinder() or "
                     + "ellipsoid() to place something.");
         }
+        FootprintCheck.verify(recorder, catalog);
         return new Result(recorder, api.log());
     }
 

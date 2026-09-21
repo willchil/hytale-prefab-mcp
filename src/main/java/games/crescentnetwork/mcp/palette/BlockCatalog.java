@@ -4,11 +4,16 @@ import com.hypixel.hytale.assetstore.map.BlockTypeAssetMap;
 import com.hypixel.hytale.common.util.StringUtil;
 import com.hypixel.hytale.protocol.Color;
 import com.hypixel.hytale.protocol.DrawType;
+import com.hypixel.hytale.server.core.asset.type.blockhitbox.BlockBoundingBoxes;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockTypeTextures;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.CustomModelTexture;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.RotationTuple;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.VariantRotation;
 import com.hypixel.hytale.server.core.asset.type.environment.config.Environment;
 import com.hypixel.hytale.server.core.asset.type.fluid.Fluid;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
+import com.hypixel.hytale.server.core.util.FillerBlockUtil;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -32,16 +37,22 @@ public final class BlockCatalog {
 
     private final List<BlockInfo> entries;
     private final Map<String, BlockInfo> byLowerId;
+    /** Block states, which are never searched or placed by name but do turn up in saved prefabs. */
+    private final Map<String, BlockInfo> statesByLowerId;
 
-    private BlockCatalog(List<BlockInfo> entries) {
+    private BlockCatalog(List<BlockInfo> entries, List<BlockInfo> states) {
         this.entries = List.copyOf(entries);
+        this.byLowerId = indexById(entries);
+        this.statesByLowerId = indexById(states);
+    }
+
+    private static Map<String, BlockInfo> indexById(List<BlockInfo> entries) {
         Map<String, BlockInfo> index = new HashMap<>(entries.size() * 2);
         for (BlockInfo e : entries) {
             index.put(e.lowerId(), e);
         }
-        this.byLowerId = Map.copyOf(index);
+        return Map.copyOf(index);
     }
-
 
     /**
      * Builds a catalog from an explicit list instead of from the registries, so the script engine and
@@ -50,7 +61,7 @@ public final class BlockCatalog {
     public static BlockCatalog of(List<BlockInfo> entries) {
         List<BlockInfo> sorted = new ArrayList<>(entries);
         sorted.sort((a, b) -> a.id().compareToIgnoreCase(b.id()));
-        return new BlockCatalog(sorted);
+        return new BlockCatalog(sorted, List.of());
     }
 
     /**
@@ -59,25 +70,23 @@ public final class BlockCatalog {
      */
     public static BlockCatalog snapshot() {
         List<BlockInfo> out = new ArrayList<>(3200);
-        collectBlocks(out);
+        List<BlockInfo> states = new ArrayList<>(2000);
+        collectBlocks(out, states);
         collectFluids(out);
         out.sort((a, b) -> a.id().compareToIgnoreCase(b.id()));
-        return new BlockCatalog(out);
+        return new BlockCatalog(out, states);
     }
 
-    private static void collectBlocks(List<BlockInfo> out) {
+    private static void collectBlocks(List<BlockInfo> out, List<BlockInfo> states) {
         BlockTypeAssetMap<String, BlockType> map = BlockType.getAssetMap();
         for (Map.Entry<String, BlockType> entry : map.getAssetMap().entrySet()) {
             String id = entry.getKey();
             BlockType block = entry.getValue();
             if (block == null || isHidden(id)) continue;
-            // A block state (Furniture_..._OpenDoorOut and friends) is reachable through its parent
-            // rather than placed directly, and listing every state would bury the real materials.
-            if (block.isState()) continue;
 
             Item item = block.getItem();
             DrawType drawType = block.getDrawType();
-            out.add(new BlockInfo(
+            BlockInfo info = new BlockInfo(
                 block.getId(),
                 BlockInfo.Kind.BLOCK,
                 block.getGroup(),
@@ -87,9 +96,95 @@ public final class BlockCatalog {
                 toRgb(block.getTextureComputedColor(), block.getParticleColor()),
                 item == null ? null : item.getIcon(),
                 faceTexturesOf(block),
-                0
-            ));
+                0,
+                geometryOf(block)
+            );
+            // A block state (Furniture_..._OpenDoorOut, a roof's corner piece) is reachable through
+            // its parent rather than placed directly, and listing every state would bury the real
+            // materials. States are still kept for rendering, since prefabs saved in game carry them.
+            if (block.isState()) {
+                states.add(info);
+            } else {
+                out.add(info);
+            }
         }
+    }
+
+    /**
+     * Model, footprint and allowed rotations for a block.
+     *
+     * <p>The footprint comes from the hitbox through {@link FillerBlockUtil#forEachFillerBlock}, the
+     * same routine the server uses to place filler cells, so it cannot drift from what the game does.
+     * It is worked out for every rotation up front: a hitbox rotates with its block, so a shallow roof
+     * that reaches north at yaw 0 reaches west at yaw 90.
+     */
+    private static BlockInfo.Geometry geometryOf(BlockType block) {
+        VariantRotation variants = block.getVariantRotation();
+        return new BlockInfo.Geometry(modelOf(block), block.getHitboxType(), footprintsOf(hitboxOf(block)),
+            rotationMaskOf(variants), block.getFlipType(), variants);
+    }
+
+    /**
+     * A hitbox's footprint at each rotation, or an empty list when it never leaves its own cell.
+     * Public so tests can derive footprints from a hand-built hitbox through the same code path.
+     */
+    public static List<BlockInfo.Footprint> footprintsOf(@Nullable BlockBoundingBoxes hitbox) {
+        if (hitbox == null || !hitbox.protrudesUnitBox()) return List.of();
+        List<BlockInfo.Footprint> all = new ArrayList<>(Orientation.COUNT);
+        for (int r = 0; r < Orientation.COUNT; r++) {
+            all.add(footprintOf(hitbox.get(r)));
+        }
+        return all;
+    }
+
+    /** The yaw and pitch rotations an asset family allows, as a {@link BlockInfo.Geometry} mask. */
+    public static int rotationMaskOf(@Nullable VariantRotation variants) {
+        int mask = 1;
+        if (variants == null) return mask;
+        for (RotationTuple r : variants.getRotations()) {
+            // Roll is not offered to scripts; see Orientation.
+            if (r != null && r.index() < Orientation.COUNT) mask |= 1 << r.index();
+        }
+        return mask;
+    }
+
+    @Nullable
+    private static BlockInfo.ModelRef modelOf(BlockType block) {
+        DrawType drawType = block.getDrawType();
+        if (drawType != DrawType.Model && drawType != DrawType.CubeWithModel) return null;
+        String modelPath = block.getCustomModel();
+        if (modelPath == null || modelPath.isBlank()) return null;
+        // First weighted variant only, for the same reason as faceTexturesOf: a stable preview.
+        CustomModelTexture[] textures = block.getCustomModelTexture();
+        String texture = textures == null || textures.length == 0 || textures[0] == null
+            ? null : textures[0].getTexture();
+        float scale = block.getCustomModelScale();
+        return new BlockInfo.ModelRef(modelPath, texture, scale > 0 ? scale : 1f);
+    }
+
+    @Nullable
+    private static BlockBoundingBoxes hitboxOf(BlockType block) {
+        try {
+            return BlockBoundingBoxes.getAssetMap().getAsset(block.getHitboxTypeIndex());
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static BlockInfo.Footprint footprintOf(@Nullable BlockBoundingBoxes.RotatedVariantBoxes boxes) {
+        if (boxes == null) return BlockInfo.Footprint.SINGLE;
+        int[] b = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE,
+            Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
+        FillerBlockUtil.forEachFillerBlock(boxes, (x, y, z) -> {
+            b[0] = Math.min(b[0], x);
+            b[1] = Math.min(b[1], y);
+            b[2] = Math.min(b[2], z);
+            b[3] = Math.max(b[3], x);
+            b[4] = Math.max(b[4], y);
+            b[5] = Math.max(b[5], z);
+        });
+        if (b[0] == Integer.MAX_VALUE) return BlockInfo.Footprint.SINGLE;
+        return new BlockInfo.Footprint(b[0], b[1], b[2], b[3], b[4], b[5]);
     }
 
     private static void collectFluids(List<BlockInfo> out) {
@@ -242,6 +337,18 @@ public final class BlockCatalog {
     public BlockInfo find(@Nullable String name) {
         if (name == null) return null;
         return byLowerId.get(name.trim().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Like {@link #find}, but also resolves block states. Only the renderer wants this: a prefab saved
+     * in game can hold a roof's corner state, which should draw as its model rather than as grey.
+     */
+    @Nullable
+    public BlockInfo findForRender(@Nullable String name) {
+        if (name == null) return null;
+        String key = name.trim().toLowerCase(Locale.ROOT);
+        BlockInfo info = byLowerId.get(key);
+        return info != null ? info : statesByLowerId.get(key);
     }
 
     public boolean contains(String name) {

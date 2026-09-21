@@ -1,7 +1,10 @@
 package games.crescentnetwork.mcp.script;
 
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.RotationTuple;
+import com.hypixel.hytale.server.core.universe.world.chunk.BlockRotationUtil;
 import games.crescentnetwork.mcp.palette.BlockCatalog;
 import games.crescentnetwork.mcp.palette.BlockInfo;
+import games.crescentnetwork.mcp.palette.Orientation;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyArray;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
@@ -230,8 +233,46 @@ public final class BuildApi {
         if (info.isFluid()) {
             recorder.putFluid(x, y, z, info.id(), optInt(o, "level", info.defaultFluidLevel()));
         } else {
-            recorder.putBlock(x, y, z, info.id(), optInt(o, "rotation", 0));
+            recorder.putBlock(x, y, z, info.id(), rotation(o, info));
         }
+    }
+
+    /**
+     * Reads {@code yaw} and {@code pitch} in degrees and turns them into Hytale's rotation index.
+     *
+     * <p>A rotation the block does not support is an error rather than being quietly snapped to the
+     * nearest one it does. Hytale itself would snap it, but an agent that asked for an upside-down
+     * fence and silently got an upright one has learned nothing about why its build looks wrong.
+     */
+    private static int rotation(@Nullable Value o, BlockInfo info) {
+        if (read(o, "rotation") != null) {
+            throw new ScriptError(ScriptError.Phase.RUNTIME,
+                "The rotation option has been replaced by yaw and pitch in degrees, e.g. {yaw: 90} or "
+                    + "{yaw: 180, pitch: 180}. " + info.id() + " supports "
+                    + Orientation.describe(info.geometry().rotations()) + ".");
+        }
+        int yaw = optDegrees(o, "yaw");
+        int pitch = optDegrees(o, "pitch");
+        if (yaw == 0 && pitch == 0) return 0;
+
+        int index = Orientation.index(yaw, pitch);
+        if (!info.geometry().allows(index)) {
+            throw new ScriptError(ScriptError.Phase.RUNTIME,
+                info.id() + " cannot be placed at " + Orientation.label(index) + "; it supports "
+                    + Orientation.describe(info.geometry().rotations()) + ".");
+        }
+        return index;
+    }
+
+    private static int optDegrees(@Nullable Value o, String key) {
+        Value v = read(o, key);
+        if (v == null) return 0;
+        double d = toNumber(v);
+        if (!Orientation.isQuarterTurn(d)) {
+            throw new ScriptError(ScriptError.Phase.RUNTIME,
+                key + " must be 0, 90, 180 or 270 degrees, but got " + describe(v) + ".");
+        }
+        return Orientation.normalise((int) d);
     }
 
     private void drawLine(int x1, int y1, int z1, int x2, int y2, int z2, String name, @Nullable Value o) {
@@ -328,7 +369,8 @@ public final class BuildApi {
             long k = e.getKey();
             int[] m = reflect(axis, plane,
                 BuildRecorder.unpackX(k), BuildRecorder.unpackY(k), BuildRecorder.unpackZ(k));
-            recorder.putBlock(m[0], m[1], m[2], e.getValue().name(), e.getValue().rotation());
+            BuildRecorder.Placement p = e.getValue();
+            recorder.putBlock(m[0], m[1], m[2], p.name(), mirroredRotation(p, axis));
         }
         for (var e : fluids) {
             long k = e.getKey();
@@ -336,6 +378,42 @@ public final class BuildApi {
                 BuildRecorder.unpackX(k), BuildRecorder.unpackY(k), BuildRecorder.unpackZ(k));
             recorder.putFluid(m[0], m[1], m[2], e.getValue().name(), e.getValue().level());
         }
+    }
+
+    /**
+     * The rotation a block needs to look mirrored, not merely moved: a roof facing east should face
+     * west on the far side of an X mirror.
+     *
+     * <p>Uses {@link BlockRotationUtil#getFlipped}, the call Hytale makes when a builder flips a
+     * selection, so each block's own flip type (a door's hinge, a roof corner's handedness) is
+     * honoured. A flip can come back rolled, which is folded into the equivalent yaw and pitch. When
+     * the result is still not one the block supports, it is canonicalised the way the game
+     * canonicalises a placement, so a fence turned 180 degrees becomes the identical fence at 0; if
+     * even that fails, the original rotation is kept.
+     */
+    private int mirroredRotation(BuildRecorder.Placement p, Axis axis) {
+        BlockInfo info = catalog.find(p.name());
+        if (info == null) return p.rotation();
+        BlockInfo.Geometry g = info.geometry();
+        if (p.rotation() == 0 && g.rotationMask() == 1) return 0;
+
+        RotationTuple flipped = BlockRotationUtil.getFlipped(RotationTuple.get(p.rotation()), g.flipType(),
+            switch (axis) {
+                case X -> com.hypixel.hytale.math.Axis.X;
+                case Y -> com.hypixel.hytale.math.Axis.Y;
+                case Z -> com.hypixel.hytale.math.Axis.Z;
+            });
+        if (flipped == null) return p.rotation();
+        int candidate = Orientation.withoutRoll(flipped.index());
+        if (candidate >= 0 && g.allows(candidate)) return candidate;
+
+        var variants = g.variantRotation();
+        if (variants != null) {
+            RotationTuple verified = variants.verify(RotationTuple.get(candidate >= 0 ? candidate : flipped.index()));
+            int canonical = verified == null ? -1 : Orientation.withoutRoll(verified.index());
+            if (canonical >= 0 && g.allows(canonical)) return canonical;
+        }
+        return p.rotation();
     }
 
     private static int[] reflect(Axis axis, int plane, int x, int y, int z) {

@@ -60,8 +60,21 @@ public final class BuildPrefabTool implements McpTool {
             inferred from the name (a *_Source name is a full source cell); override with \
             opts {level: 1-8}.
 
-            OPTIONS: opts {rotation: n} for blocks, opts {level: n} for fluids, opts {hollow: true} \
+            OPTIONS: opts {yaw, pitch} for blocks, opts {level: n} for fluids, opts {hollow: true} \
             for box/sphere/ellipsoid/cylinder.
+
+            ORIENTATION: opts {yaw: 0|90|180|270, pitch: 0|90|180|270}, in degrees, both default 0. \
+            Yaw turns a block about the vertical axis: whatever faces north (-Z) at yaw 0 faces west \
+            (-X) at yaw 90, south (+Z) at 180 and east (+X) at 270. Pitch 180 turns roofs, stairs and \
+            slabs upside down, and pitch 90 lays pipes and beams on their side or stands a half slab \
+            on end. Each block supports only some combinations; get_block_texture lists them, and an \
+            unsupported one fails the build with the valid choices.
+
+            MULTI-CELL BLOCKS: some blocks fill more than one cell, such as shallow and steep roofs, \
+            beds, doors and benches. search_blocks shows this in its cells column, and \
+            get_block_texture shows which neighbouring cells a block fills at each yaw. Those cells are \
+            written as filler and must be left empty; a build that puts anything else there fails and \
+            names the cells. Fluids may share them.
 
             QUERY AND EDIT
               blockAt(x, y, z) / fluidAt(x, y, z)   name placed there, or null
@@ -143,8 +156,11 @@ public final class BuildPrefabTool implements McpTool {
 
         StringBuilder out = new StringBuilder();
         out.append("Saved ").append(saved.path()).append('\n')
-            .append("blocks: ").append(saved.blockCount())
-            .append("  fluids: ").append(saved.fluidCount())
+            .append("blocks: ").append(saved.blockCount());
+        if (saved.fillerCount() > 0) {
+            out.append(" (+").append(saved.fillerCount()).append(" filler cells for multi-cell blocks)");
+        }
+        out.append("  fluids: ").append(saved.fluidCount())
             .append("  distinct names: ").append(saved.distinctNames()).append('\n')
             .append("size: ").append(saved.width()).append(" x ").append(saved.height())
             .append(" x ").append(saved.length()).append(" (w x h x l)\n");

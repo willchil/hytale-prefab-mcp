@@ -42,7 +42,12 @@ public final class SearchBlocksTool implements McpTool {
 
             Search by text, filter by kind/group/pack/drawType, or pass color to rank by closest \
             average colour. drawType=Cube means a plain cubic block with real face textures; Model and \
-            CubeWithModel blocks use a custom mesh.""";
+            CubeWithModel blocks use a custom mesh, which may be much thinner than a full cell.
+
+            The cells column is how many cells a block fills: 1 for an ordinary block, or width x \
+            height x length at yaw 0 for a multi-cell block such as a shallow roof (1x1x2) or a bed. \
+            The extra cells cannot hold anything else. get_block_texture shows exactly which cells a \
+            block fills at each yaw, which rotations it supports, and how big its model really is.""";
     }
 
     @Override
@@ -99,12 +104,13 @@ public final class SearchBlocksTool implements McpTool {
         out.append("Matched ").append(hits.size());
         if (hits.size() == limit) out.append(" (limit reached)");
         out.append(" of ").append(catalog.size()).append(" palette entries.\n\n");
-        out.append("name  |  kind  |  group  |  drawType  |  colour  |  pack\n");
+        out.append("name  |  kind  |  group  |  drawType  |  cells  |  colour  |  pack\n");
         for (BlockInfo e : hits) {
             out.append(e.id())
                 .append("  |  ").append(e.isFluid() ? "fluid" : "block")
                 .append("  |  ").append(orDash(e.group()))
                 .append("  |  ").append(orDash(e.drawType()))
+                .append("  |  ").append(e.geometry().footprint(0).size())
                 .append("  |  ").append(String.format("#%06x", e.rgb()))
                 .append("  |  ").append(orDash(e.pack()))
                 .append('\n');

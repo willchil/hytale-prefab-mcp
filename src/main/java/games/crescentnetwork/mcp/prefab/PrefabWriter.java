@@ -28,9 +28,9 @@ import java.util.Map;
  * for stable diffs, and omits optional fields sitting at their defaults. Producing the JSON here
  * instead would mean re-deriving all of that and drifting from it on the next server update.
  *
- * <p>Output is sparse: only cells the script actually placed are written, so pasting overlays terrain
- * rather than clearing the volume around the build. Hytale's own paste UI has an air-override toggle
- * for when the other behaviour is wanted.
+ * <p>Output is sparse: only cells the script actually placed are written, plus the filler cells that
+ * multi-cell blocks need, so pasting overlays terrain rather than clearing the volume around the
+ * build. Hytale's own paste UI has an air-override toggle for when the other behaviour is wanted.
  */
 public final class PrefabWriter {
 
@@ -40,6 +40,8 @@ public final class PrefabWriter {
     public record Saved(
         Path path,
         int blockCount,
+        /** Extra cells written so multi-cell blocks are whole; not counted in {@link #blockCount}. */
+        int fillerCount,
         int fluidCount,
         int width,
         int height,
@@ -67,7 +69,14 @@ public final class PrefabWriter {
             new Vector3i(bounds.maxX(), bounds.maxY(), bounds.maxZ()));
 
         addBlocks(recorder, selection);
+        int fillerCount = addFillers(selection);
         addFluids(recorder, selection);
+
+        // Filler cells can reach past the placed cells, so the stored area is widened to hold them.
+        int[] area = bounds(selection, bounds);
+        selection.setSelectionArea(
+            new Vector3i(area[0], area[1], area[2]),
+            new Vector3i(area[3], area[4], area[5]));
 
         Path target = resolveTarget(cleaned, directory);
         Path written;
@@ -85,8 +94,47 @@ public final class PrefabWriter {
             throw new ScriptError(ScriptError.Phase.SAVE, "Could not save prefab \"" + cleaned + "\": " + message);
         }
 
-        return new Saved(written, recorder.blockCount(), recorder.fluidCount(),
-            bounds.width(), bounds.height(), bounds.length(), recorder.namesUsed().size());
+        return new Saved(written, recorder.blockCount(), fillerCount, recorder.fluidCount(),
+            area[3] - area[0] + 1, area[4] - area[1] + 1, area[5] - area[2] + 1, recorder.namesUsed().size());
+    }
+
+    /**
+     * Adds the filler cells every multi-cell block needs, so a bed or a shallow roof is whole when
+     * the prefab is pasted.
+     *
+     * <p>Paste copies cells exactly as stored and never generates filler itself, so without this a
+     * multi-cell block arrives as a lone base cell and Hytale's prefab validator reports it as having
+     * missing filler. {@link BlockSelection#tryFixFiller} is the server's own generator, placing each
+     * filler with its offset and its base block's rotation. It runs non-destructively: the script
+     * layer has already rejected any build whose footprints collide, so it should never need to
+     * overwrite anything, and if it ever did that would be a bug worth failing loudly on.
+     *
+     * @return how many filler cells were added
+     */
+    private static int addFillers(BlockSelection selection) {
+        int before = selection.getBlockCount();
+        try {
+            selection.tryFixFiller(false);
+        } catch (IllegalArgumentException e) {
+            throw new ScriptError(ScriptError.Phase.SAVE,
+                "A multi-cell block's filler cells collide with another block: " + e.getMessage());
+        }
+        return selection.getBlockCount() - before;
+    }
+
+    /** The bounding box of every stored cell, fillers included, starting from the placed cells' box. */
+    private static int[] bounds(BlockSelection selection, BuildRecorder.Bounds placed) {
+        int[] b = {placed.minX(), placed.minY(), placed.minZ(), placed.maxX(), placed.maxY(), placed.maxZ()};
+        selection.forEachBlock((x, y, z, holder) -> {
+            if (holder.filler() == FillerBlockUtil.NO_FILLER) return;
+            b[0] = Math.min(b[0], x);
+            b[1] = Math.min(b[1], y);
+            b[2] = Math.min(b[2], z);
+            b[3] = Math.max(b[3], x);
+            b[4] = Math.max(b[4], y);
+            b[5] = Math.max(b[5], z);
+        });
+        return b;
     }
 
     private static void addBlocks(BuildRecorder recorder, BlockSelection selection) {

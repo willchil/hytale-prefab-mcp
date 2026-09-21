@@ -1,6 +1,7 @@
 package games.crescentnetwork.mcp.render;
 
 import games.crescentnetwork.mcp.palette.BlockInfo;
+import games.crescentnetwork.mcp.render.model.BakedModel;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -13,11 +14,11 @@ import java.util.stream.IntStream;
  * Renders a {@link VoxelScene} to a PNG entirely on the CPU.
  *
  * <p>Hytale renders blocks on the client, so there is no server-side renderer to borrow. This is a
- * plain raycaster: one ray per pixel, marched through the voxel grid with the Amanatides and Woo DDA,
- * shaded from the face normal it entered through. Cubic blocks sample their real face texture; the
- * roughly 1,784 blocks drawn from a custom model have no face texture, so they render as a solid cube
- * in the block's average colour. That is approximate for thin geometry such as ropes and torches, and
- * the render is a preview to iterate against rather than a screenshot of the game.
+ * plain raycaster: one ray per pixel, marched through the voxel grid with the Amanatides and Woo DDA.
+ * Cubic blocks are shaded from the face the ray entered through and sample their real face texture.
+ * Blocks drawn from a custom model are traced against the model's own boxes and quads, textured and
+ * with transparent texels cut out, in every cell the model reaches. The render is still a preview to
+ * iterate against rather than a screenshot: there is no shadowing, no light level and no biome tint.
  */
 public final class VoxelRenderer {
 
@@ -25,6 +26,12 @@ public final class VoxelRenderer {
     private static final double LIGHT_X = 0.42, LIGHT_Y = 0.82, LIGHT_Z = 0.39;
 
     private static final double AMBIENT = 0.42;
+
+    /** Brightness of a model part authored as unshaded, such as hay or cloth drawn flat. */
+    private static final double FLAT_SHADE = 0.85;
+
+    /** Hits closer than this to the eye are ignored, so a model the camera sits inside does not fill the frame. */
+    private static final double NEAR = 1e-6;
 
     /** Stops a pathological camera from marching the whole grid for every pixel. */
     private static final int MAX_STEPS = 4096;
@@ -58,12 +65,13 @@ public final class VoxelRenderer {
         // Rows are independent, and a render is the slowest thing this plugin does.
         IntStream.range(0, height).parallel().forEach(py -> {
             int rowBase = py * width;
+            BakedModel.Hit hit = new BakedModel.Hit();
             // +0.5 samples the pixel centre; the Y flip puts +Y up in the image.
             double ndcY = 1.0 - 2.0 * ((py + 0.5) / height);
             for (int px = 0; px < width; px++) {
                 double ndcX = 2.0 * ((px + 0.5) / width) - 1.0;
                 double[] dir = camera.rayDirection(ndcX, ndcY);
-                pixels[rowBase + px] = trace(scene, camera, dir, lx, ly, lz, py, height);
+                pixels[rowBase + px] = trace(scene, camera, dir, lx, ly, lz, py, height, hit);
             }
         });
 
@@ -72,7 +80,7 @@ public final class VoxelRenderer {
     }
 
     private int trace(VoxelScene scene, Camera cam, double[] dir,
-                      double lx, double ly, double lz, int py, int height) {
+                      double lx, double ly, double lz, int py, int height, BakedModel.Hit hit) {
         double ox = cam.eyeX, oy = cam.eyeY, oz = cam.eyeZ;
         double dx = dir[0], dy = dir[1], dz = dir[2];
 
@@ -122,7 +130,30 @@ public final class VoxelRenderer {
 
         for (int i = 0; i < MAX_STEPS; i++) {
             short material = scene.at(cx, cy, cz);
-            if (material != 0) {
+            boolean solid = material != 0 && scene.material(material).solid();
+
+            int[] instances = scene.instancesAt(cx, cy, cz);
+            if (instances != null) {
+                // Only geometry inside this cell counts yet: anything further along the ray lies in a
+                // later cell, where the same instance is registered and will be found in order. A solid
+                // cube here hides whatever of a model sits behind its entry face.
+                double cellExit = Math.min(tMaxX, Math.min(tMaxY, tMaxZ));
+                double limit = solid ? tHit : cellExit + 1e-9;
+                boolean found = false;
+                for (int instance : instances) {
+                    BakedModel model = scene.material(scene.instanceMaterial(instance)).model();
+                    if (model == null) continue;
+                    if (model.intersect(
+                        ox - scene.instanceX(instance), oy - scene.instanceY(instance), oz - scene.instanceZ(instance),
+                        dx, dy, dz, NEAR, limit, hit)) {
+                        limit = hit.t;
+                        found = true;
+                    }
+                }
+                if (found) return shadeModel(hit, lx, ly, lz);
+            }
+
+            if (solid) {
                 return shade(scene, material, axis, axisStep,
                     ox + dx * tHit, oy + dy * tHit, oz + dz * tHit, lx, ly, lz);
             }
@@ -199,12 +230,28 @@ public final class VoxelRenderer {
             if (sampled >= 0) rgb = sampled;
         }
 
-        double ndotl = nx * lx + ny * ly + nz * lz;
-        if (ndotl < 0) ndotl = 0;
-        double shade = AMBIENT + (1.0 - AMBIENT) * ndotl;
+        double shade = lambert(nx, ny, nz, lx, ly, lz);
         // Fluids read better slightly luminous; in game they are lit from within rather than shaded.
         if (m.fluid()) shade = Math.min(1.0, shade + 0.12);
+        return scale(rgb, shade);
+    }
 
+    private static int shadeModel(BakedModel.Hit hit, double lx, double ly, double lz) {
+        double shade = switch (hit.shading) {
+            case FULLBRIGHT -> 1.0;
+            case FLAT -> FLAT_SHADE;
+            case STANDARD -> lambert(hit.nx, hit.ny, hit.nz, lx, ly, lz);
+        };
+        return scale(hit.argb & 0xFFFFFF, shade);
+    }
+
+    private static double lambert(double nx, double ny, double nz, double lx, double ly, double lz) {
+        double ndotl = nx * lx + ny * ly + nz * lz;
+        if (ndotl < 0) ndotl = 0;
+        return AMBIENT + (1.0 - AMBIENT) * ndotl;
+    }
+
+    private static int scale(int rgb, double shade) {
         int r = clamp((int) (((rgb >> 16) & 0xFF) * shade));
         int g = clamp((int) (((rgb >> 8) & 0xFF) * shade));
         int b = clamp((int) ((rgb & 0xFF) * shade));

@@ -5,6 +5,7 @@ import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.asset.type.fluid.Fluid;
 import com.hypixel.hytale.server.core.prefab.PrefabStore;
 import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
+import com.hypixel.hytale.server.core.util.FillerBlockUtil;
 import games.crescentnetwork.mcp.script.BuildRecorder;
 import games.crescentnetwork.mcp.script.ScriptError;
 
@@ -70,6 +71,10 @@ public final class PrefabLoader {
             // Prefabs captured from the world are dense and carry Empty for air. Those cells are
             // dropped here so a loaded build renders as its solid geometry rather than a filled box.
             if (BlockType.EMPTY_KEY.equalsIgnoreCase(id)) return;
+            // Filler cells belong to a multi-cell block placed elsewhere. The renderer draws that
+            // block's whole model from its base cell, and saving regenerates fillers, so keeping them
+            // would draw the model once per cell it covers.
+            if (holder.filler() != FillerBlockUtil.NO_FILLER) return;
             recorder.putBlock(x, y, z, id, holder.rotation());
         });
 
