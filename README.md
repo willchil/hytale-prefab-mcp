@@ -28,8 +28,14 @@ Start the server and look for:
 [PrefabMcp|P] MCP server listening on http://127.0.0.1:8765/mcp
 ```
 
-Run `/prefab-mcp` in game or on the server console and it prints the configuration to paste,
-with the address the listener actually took:
+Run `/prefab-mcp` in game and it opens a page with the configuration, and your personal token when
+one is required, in fields you can select and copy. Chat cannot be selected and the protocol has no
+clipboard packet, so a page is the only way to hand over a long token without retyping it. Nothing is
+read back from those fields: editing one locally does nothing, and running the command again restores
+it.
+
+On the server console, where there is no client to show a page to, it prints the same configuration
+instead:
 
 ```
 MCP server listening on port 8765

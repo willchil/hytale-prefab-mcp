@@ -3,9 +3,16 @@ package games.crescentnetwork.mcp.command;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import games.crescentnetwork.mcp.McpConfig;
 import games.crescentnetwork.mcp.auth.McpAuthenticator;
 import games.crescentnetwork.mcp.auth.McpTokens;
@@ -16,6 +23,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.awt.Color;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -28,6 +36,8 @@ import java.util.concurrent.CompletableFuture;
 public final class PrefabMcpCommand extends AbstractCommand {
 
     public static final String NAME = "prefab-mcp";
+
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     // HTML escaping is off because this is a config file, not markup: with it on, the angle brackets
     // of the host placeholder come out as escape sequences and the block cannot be pasted as-is.
@@ -44,6 +54,9 @@ public final class PrefabMcpCommand extends AbstractCommand {
      * placeholder asks the operator for the one piece only they know, rather than guessing.
      */
     private static final String HOST_PLACEHOLDER = "<server-host>";
+
+    /** The page shows the configuration in a single-line field, so it goes in without the newlines. */
+    private static final Gson COMPACT = new GsonBuilder().disableHtmlEscaping().create();
 
     private final McpHttpServer server;
     private final McpTokens tokens;
@@ -78,7 +91,7 @@ public final class PrefabMcpCommand extends AbstractCommand {
                 "This server does not require a personal token, so this configuration works for "
                     + "anyone who can reach it. Set \"" + McpConfig.REQUIRE_PERSONAL_TOKEN
                     + "\": true in " + McpConfig.FILE_NAME + " to require one.").color(Color.YELLOW));
-            printConfiguration(context, null);
+            if (!openPage(context, null)) printConfiguration(context, null);
             return CompletableFuture.completedFuture(null);
         }
 
@@ -94,11 +107,71 @@ public final class PrefabMcpCommand extends AbstractCommand {
         UUID player = context.sender().getUuid();
         String token = tokens.issue(player);
 
-        context.sendMessage(Message.raw(
-            "This token is personal to you. Anyone who has it can build on this server as you, so "
-                + "do not share it or paste it anywhere public.").color(Color.YELLOW));
-        printConfiguration(context, token);
+        if (!openPage(context, token)) sendConfigurationToChat(context, token);
         return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Opens the page showing the details in selectable fields.
+     *
+     * <p>Chat cannot be selected and the protocol has no clipboard packet, so a page is the only way
+     * to hand over a token without making someone retype it.
+     *
+     * @return false if there was no player to show it to, in which case the caller falls back to chat
+     */
+    private boolean openPage(CommandContext context, @Nullable String token) {
+        if (!context.isPlayer()) return false;
+
+        Ref<EntityStore> ref = context.senderAsPlayerRef();
+        if (ref == null || !ref.isValid()) return false;
+
+        Store<EntityStore> store = ref.getStore();
+        World world;
+        try {
+            world = store.getExternalData().getWorld();
+        } catch (RuntimeException | LinkageError e) {
+            LOGGER.at(Level.WARNING).log("Could not find the world to open the /%s page: %s", NAME, e);
+            return false;
+        }
+        if (world == null) return false;
+
+        String json = COMPACT.toJson(configurationJson(server.urlFor(HOST_PLACEHOLDER), token));
+
+        // Entity components may only be touched on their world's thread. Reading them from the
+        // command thread is what stopped this opening at all, and it failed silently because there
+        // was nothing to see: hence both the hop and the logging below.
+        try {
+            world.execute(() -> {
+                try {
+                    PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
+                    Player player = store.getComponent(ref, Player.getComponentType());
+                    if (playerRef == null || player == null) {
+                        sendConfigurationToChat(context, token);
+                        return;
+                    }
+                    player.getPageManager()
+                        .openCustomPage(ref, store, new PrefabMcpPage(playerRef, json, token));
+                } catch (RuntimeException | LinkageError e) {
+                    LOGGER.at(Level.WARNING).log("Could not open the /%s page: %s", NAME, e);
+                    sendConfigurationToChat(context, token);
+                }
+            });
+            return true;
+        } catch (RuntimeException | LinkageError e) {
+            // The world stops accepting work during shutdown, and chat still has the answer.
+            LOGGER.at(Level.WARNING).log("Could not reach the world thread for /%s: %s", NAME, e);
+            return false;
+        }
+    }
+
+    /** The chat form, used whenever the page could not be shown. */
+    private void sendConfigurationToChat(CommandContext context, @Nullable String token) {
+        if (token != null) {
+            context.sendMessage(Message.raw(
+                "This token is personal to you. Anyone who has it can build on this server as you, "
+                    + "so do not share it or paste it anywhere public.").color(Color.YELLOW));
+        }
+        printConfiguration(context, token);
     }
 
     /** @param token the caller's personal token, or null when the server does not require one */
