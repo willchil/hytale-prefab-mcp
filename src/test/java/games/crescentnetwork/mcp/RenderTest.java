@@ -1,5 +1,7 @@
 package games.crescentnetwork.mcp;
 
+import com.google.gson.JsonObject;
+import games.crescentnetwork.mcp.mcp.tools.RenderPrefabTool;
 import games.crescentnetwork.mcp.render.Camera;
 import games.crescentnetwork.mcp.render.TextureCache;
 import games.crescentnetwork.mcp.render.VoxelRenderer;
@@ -33,6 +35,17 @@ class RenderTest {
 
     private static VoxelScene scene(String code) {
         return VoxelScene.from(build(code), TestPalette.catalog());
+    }
+
+    @Test
+    void renderTargetSchemaDefinesThreeNumericItems() {
+        JsonObject target = new RenderPrefabTool(null).inputSchema()
+            .getAsJsonObject("properties")
+            .getAsJsonObject("target");
+
+        assertEquals("number", target.getAsJsonObject("items").get("type").getAsString());
+        assertEquals(3, target.get("minItems").getAsInt());
+        assertEquals(3, target.get("maxItems").getAsInt());
     }
 
     @Test

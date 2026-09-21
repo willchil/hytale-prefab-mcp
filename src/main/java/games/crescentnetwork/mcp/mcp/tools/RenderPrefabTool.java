@@ -71,8 +71,13 @@ public final class RenderPrefabTool implements McpTool {
         Schema.defaultValue(width, DEFAULT_WIDTH);
         JsonObject height = Schema.prop(schema, "height", "integer", "Image height in pixels.");
         Schema.defaultValue(height, DEFAULT_HEIGHT);
-        Schema.prop(schema, "target", "array",
+        JsonObject target = Schema.prop(schema, "target", "array",
             "Optional [x, y, z] to aim at. Defaults to the centre of the build.");
+        JsonObject targetItem = new JsonObject();
+        targetItem.addProperty("type", "number");
+        target.add("items", targetItem);
+        target.addProperty("minItems", 3);
+        target.addProperty("maxItems", 3);
         return schema;
     }
 
