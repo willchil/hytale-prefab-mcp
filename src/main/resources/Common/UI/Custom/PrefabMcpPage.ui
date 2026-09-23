@@ -3,8 +3,9 @@
 //
 // The two values that matter are in TextFields rather than Labels purely so they can be selected.
 // Nothing is ever read back from them: editing one locally has no effect, and re-running the command
-// restores it. Everything static is written here; Java only fills in the two values and decides
-// whether the token section is shown.
+// restores it. Everything static is written here; Java only fills in the two values and the
+// instructions, which depend on whether the server is local only, and decides whether the token
+// section is shown.
 $C = "Common.ui";
 
 @MultilineTextField = MultilineTextField {
@@ -33,7 +34,7 @@ $C.@PageOverlay {
       LayoutMode: Top;
       Padding: (Full: 16);
 
-      Label {
+      Label #Instructions {
         Anchor: (Bottom: 14, Left: 4, Right: 4);
         Text: "Add this to your MCP client configuration. Replace <server-host> with this server's address, or 127.0.0.1 if the agent runs on this machine.";
         Style: (...$C.@DefaultLabelStyle, Wrap: true);

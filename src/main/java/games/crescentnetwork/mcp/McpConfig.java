@@ -2,6 +2,7 @@ package games.crescentnetwork.mcp;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import games.crescentnetwork.mcp.auth.McpTokens;
@@ -26,27 +27,40 @@ public final class McpConfig {
     public static final String PORT = "port";
     public static final String TOKEN_SECRET = "tokenSecret";
     public static final String REQUIRE_PERSONAL_TOKEN = "requirePersonalToken";
+    public static final String LOCAL_ONLY = "localOnly";
 
     /**
      * Whether a fresh server demands a personal token.
      *
-     * <p>Off, so a new server works the moment it boots. The listener is bound to loopback, so
-     * reaching it already means being on the machine; turning this on is what matters once the
-     * endpoint is shared, whether through a tunnel or a proxy.
+     * <p>Off, so a new server works the moment it boots. A new server is also {@link
+     * #DEFAULT_LOCAL_ONLY local only}, so reaching it already means being on the machine; turning
+     * this on is what matters once the endpoint is shared, whether by turning {@code localOnly} off
+     * or through a tunnel or a proxy.
      */
     private static final boolean DEFAULT_REQUIRE_PERSONAL_TOKEN = false;
+
+    /**
+     * Whether a fresh server listens on loopback only.
+     *
+     * <p>On, so a new server is reachable from its own machine and nothing else until an operator
+     * decides otherwise.
+     */
+    private static final boolean DEFAULT_LOCAL_ONLY = true;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     private final int port;
     private final String tokenSecret;
     private final boolean requirePersonalToken;
+    private final boolean localOnly;
     private final JsonObject raw;
 
-    private McpConfig(int port, String tokenSecret, boolean requirePersonalToken, JsonObject raw) {
+    private McpConfig(int port, String tokenSecret, boolean requirePersonalToken, boolean localOnly,
+                      JsonObject raw) {
         this.port = port;
         this.tokenSecret = tokenSecret;
         this.requirePersonalToken = requirePersonalToken;
+        this.localOnly = localOnly;
         this.raw = raw;
     }
 
@@ -72,6 +86,16 @@ public final class McpConfig {
      */
     public boolean requirePersonalToken() {
         return requirePersonalToken;
+    }
+
+    /**
+     * Whether the listener binds to loopback only.
+     *
+     * <p>When on, only an agent on this machine can connect. When off, the listener binds to
+     * {@code 0.0.0.0} and accepts connections from any machine that can reach the port.
+     */
+    public boolean localOnly() {
+        return localOnly;
     }
 
     /** The parsed file as-is, so a caller can read a key this class does not model yet. */
@@ -158,8 +182,24 @@ public final class McpConfig {
             dirty = true;
         }
 
+        boolean localOnly = DEFAULT_LOCAL_ONLY;
+        if (contents.has(LOCAL_ONLY)) {
+            // Only a real boolean is accepted. Gson reads 1, "yes" or [1] as false, and a typo must
+            // never be what opens the endpoint to the network.
+            JsonElement configured = contents.get(LOCAL_ONLY);
+            if (configured.isJsonPrimitive() && configured.getAsJsonPrimitive().isBoolean()) {
+                localOnly = configured.getAsBoolean();
+            } else {
+                onProblem.report("Ignoring invalid \"" + LOCAL_ONLY + "\" in " + FILE_NAME
+                    + "; staying local only");
+            }
+        } else {
+            contents.addProperty(LOCAL_ONLY, localOnly);
+            dirty = true;
+        }
+
         if (dirty) write(file, contents, onProblem);
-        return new McpConfig(port, secret, requireToken, contents);
+        return new McpConfig(port, secret, requireToken, localOnly, contents);
     }
 
     private static void write(Path file, JsonObject contents, Problems onProblem) {

@@ -55,6 +55,9 @@ public final class PrefabMcpCommand extends AbstractCommand {
      */
     private static final String HOST_PLACEHOLDER = "<server-host>";
 
+    /** The only host that reaches a local-only listener, so it is printed instead of the placeholder. */
+    private static final String LOOPBACK_HOST = "127.0.0.1";
+
     private final McpHttpServer server;
     private final McpTokens tokens;
     private final McpAuthenticator authenticator;
@@ -132,7 +135,8 @@ public final class PrefabMcpCommand extends AbstractCommand {
         }
         if (world == null) return false;
 
-        String json = GSON.toJson(configurationJson(server.urlFor(HOST_PLACEHOLDER), token));
+        String json = GSON.toJson(configurationJson(endpointUrl(), token));
+        String instructions = instructions();
 
         // Entity components may only be touched on their world's thread. Reading them from the
         // command thread is what stopped this opening at all, and it failed silently because there
@@ -147,7 +151,7 @@ public final class PrefabMcpCommand extends AbstractCommand {
                         return;
                     }
                     player.getPageManager()
-                        .openCustomPage(ref, store, new PrefabMcpPage(playerRef, json, token));
+                        .openCustomPage(ref, store, new PrefabMcpPage(playerRef, instructions, json, token));
                 } catch (RuntimeException | LinkageError e) {
                     LOGGER.at(Level.WARNING).log("Could not open the /%s page: %s", NAME, e);
                     sendConfigurationToChat(context, token);
@@ -173,14 +177,34 @@ public final class PrefabMcpCommand extends AbstractCommand {
 
     /** @param token the caller's personal token, or null when the server does not require one */
     private void printConfiguration(CommandContext context, @Nullable String token) {
-        context.sendMessage(Message.raw("Add this to your MCP client configuration, replacing "
-            + HOST_PLACEHOLDER + " with this server's address (127.0.0.1 if it is the same machine "
-            + "as the agent):"));
+        context.sendMessage(Message.raw(instructions()));
         // One message per line so it arrives as lines rather than as a single wrapped blob, in a
         // player's chat as much as on the console.
-        for (String line : GSON.toJson(configurationJson(server.urlFor(HOST_PLACEHOLDER), token)).split("\n")) {
+        for (String line : GSON.toJson(configurationJson(endpointUrl(), token)).split("\n")) {
             context.sendMessage(Message.raw(line).color(Color.LIGHT_GRAY));
         }
+    }
+
+    /**
+     * The endpoint as the printed configuration should give it.
+     *
+     * <p>A local-only listener can be reached through loopback and nothing else, so there is no host
+     * to ask the operator for. Otherwise the host depends on where the agent runs, so a placeholder
+     * is printed for them to fill in.
+     */
+    private String endpointUrl() {
+        return server.urlFor(server.isLocalOnly() ? LOOPBACK_HOST : HOST_PLACEHOLDER);
+    }
+
+    /** What to do with the configuration, which depends on whether other machines can reach it. */
+    private String instructions() {
+        if (server.isLocalOnly()) {
+            return "Add this to your MCP client configuration on this machine. This server is local only, "
+                + "so it accepts connections from this machine alone; to use it from other devices, set \""
+                + McpConfig.LOCAL_ONLY + "\": false in " + McpConfig.FILE_NAME + " and restart.";
+        }
+        return "Add this to your MCP client configuration. Replace " + HOST_PLACEHOLDER
+            + " with this server's address, or " + LOOPBACK_HOST + " if the agent runs on this machine.";
     }
 
     /**

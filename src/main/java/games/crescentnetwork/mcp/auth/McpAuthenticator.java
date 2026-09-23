@@ -19,7 +19,8 @@ import java.util.UUID;
  * grant, and resolves for a player who is not online, so a token keeps working between sessions.
  *
  * <p>When tokens are not required, every caller is allowed through anonymously and the header is not
- * read at all. The listener is bound to loopback, so reaching it already means being on the machine.
+ * read at all. That is safe while the listener is local only, since reaching it already means being
+ * on the machine; with {@code localOnly} off, anyone who can reach the port gets through.
  */
 public final class McpAuthenticator {
 

@@ -34,11 +34,13 @@ class ConfigTest {
 
         assertEquals(7520, config.port());
         assertFalse(config.requirePersonalToken(), "a new server should not require a token");
+        assertTrue(config.localOnly(), "a new server should be reachable from its own machine only");
         assertTrue(problems.isEmpty(), () -> "unexpected problems: " + problems);
 
         JsonObject written = onDisk(dir);
         assertEquals(7520, written.get(McpConfig.PORT).getAsInt());
         assertFalse(written.get(McpConfig.REQUIRE_PERSONAL_TOKEN).getAsBoolean());
+        assertTrue(written.get(McpConfig.LOCAL_ONLY).getAsBoolean());
         assertTrue(written.has(McpConfig.TOKEN_SECRET));
     }
 
@@ -67,6 +69,8 @@ class ConfigTest {
         assertEquals(9100, written.get(McpConfig.PORT).getAsInt());
         assertTrue(written.has(McpConfig.TOKEN_SECRET), "a missing secret should be filled in");
         assertTrue(written.has(McpConfig.REQUIRE_PERSONAL_TOKEN), "a missing toggle should be filled in");
+        assertTrue(written.get(McpConfig.LOCAL_ONLY).getAsBoolean(),
+            "an existing server upgrading should stay local only");
         assertEquals("keep me", written.get("somethingAnotherVersionWrote").getAsString(),
             "keys this version does not know about must survive");
     }
@@ -79,6 +83,24 @@ class ConfigTest {
     @Test
     void anExplicitFalseIsHonoured(@TempDir Path dir) {
         assertFalse(writeThenLoad(dir, "{\"requirePersonalToken\": false}").requirePersonalToken());
+    }
+
+    @Test
+    void localOnlyCanBeTurnedOff(@TempDir Path dir) {
+        assertFalse(writeThenLoad(dir, "{\"localOnly\": false}").localOnly());
+    }
+
+    @Test
+    void anInvalidLocalOnlyStaysLocalAndIsReported(@TempDir Path dir) {
+        // A typo must never be what opens the endpoint to the network.
+        assertTrue(writeThenLoad(dir, "{\"localOnly\": 1}").localOnly());
+        assertTrue(problems.stream().anyMatch(p -> p.contains(McpConfig.LOCAL_ONLY)),
+            () -> "expected a reported problem, got " + problems);
+    }
+
+    @Test
+    void aStringLocalOnlyStaysLocal(@TempDir Path dir) {
+        assertTrue(writeThenLoad(dir, "{\"localOnly\": \"no\"}").localOnly());
     }
 
     @Test
