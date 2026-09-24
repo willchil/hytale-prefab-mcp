@@ -34,9 +34,11 @@ import java.util.logging.Level;
  * server classpath is shared with the game's own network stack and best left alone, and there is
  * already a plugin in this tree serving a status endpoint exactly this way.
  *
- * <p>The listener binds to loopback only, so it is reachable by an agent on this machine and by
- * nothing else. Requests carrying a cross-origin {@code Origin} header are refused as well, which is
- * what stops a web page in the user's browser from driving the server through DNS rebinding.
+ * <p>By default the listener binds to loopback only, so it is reachable by an agent on this machine
+ * and by nothing else. With {@code localOnly} off it binds to {@code 0.0.0.0} instead and accepts
+ * connections from any machine that can reach the port. Either way, requests carrying a cross-origin
+ * {@code Origin} header are refused, which is what stops a web page in a user's browser from driving
+ * the server through DNS rebinding.
  */
 public final class McpHttpServer {
 
@@ -49,6 +51,9 @@ public final class McpHttpServer {
 
     private static final int WORKER_THREADS = 2;
 
+    /** Written as a literal so binding never waits on a name lookup. */
+    private static final String ALL_INTERFACES = "0.0.0.0";
+
     private final McpProtocol protocol;
     private final McpAuthenticator authenticator;
 
@@ -57,6 +62,7 @@ public final class McpHttpServer {
     @Nullable
     private ExecutorService executor;
     private int boundPort = -1;
+    private boolean localOnly = true;
 
     public McpHttpServer(McpProtocol protocol, McpAuthenticator authenticator) {
         this.protocol = protocol;
@@ -69,12 +75,15 @@ public final class McpHttpServer {
      * <p>Never throws: a monitoring or tooling endpoint must not be able to stop the game server from
      * booting. A failure is logged and the plugin carries on doing nothing.
      *
+     * @param localOnly true to bind to loopback only, false to bind to {@code 0.0.0.0}
      * @return true if the listener is up
      */
-    public boolean start(int port) {
+    public boolean start(int port, boolean localOnly) {
         try {
-            HttpServer created = HttpServer.create(
-                new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 0);
+            InetSocketAddress address = localOnly
+                ? new InetSocketAddress(InetAddress.getLoopbackAddress(), port)
+                : new InetSocketAddress(ALL_INTERFACES, port);
+            HttpServer created = HttpServer.create(address, 0);
 
             AtomicInteger counter = new AtomicInteger();
             ThreadFactory factory = runnable -> {
@@ -92,6 +101,7 @@ public final class McpHttpServer {
             this.server = created;
             this.executor = pool;
             this.boundPort = created.getAddress().getPort();
+            this.localOnly = localOnly;
             return true;
         } catch (IOException | RuntimeException e) {
             LOGGER.at(Level.WARNING).log("MCP server failed to start on port %d: %s", port, e.toString());
@@ -126,6 +136,11 @@ public final class McpHttpServer {
         return server != null && boundPort > 0;
     }
 
+    /** Whether the running listener is bound to loopback, and so reachable from this machine only. */
+    public boolean isLocalOnly() {
+        return localOnly;
+    }
+
     public String url() {
         return urlFor("127.0.0.1");
     }
@@ -133,8 +148,8 @@ public final class McpHttpServer {
     /**
      * The endpoint URL as reached through {@code host}.
      *
-     * <p>The port is known, the host is not: the listener is bound to loopback, and the address a
-     * client should actually use depends on where that client runs relative to this server. Callers
+     * <p>The port is known, the host is not: the address a client should actually use depends on
+     * where that client runs relative to this server, and on any proxy or DNS name in front. Callers
      * pass either a concrete host or a placeholder for the operator to fill in.
      */
     public String urlFor(String host) {

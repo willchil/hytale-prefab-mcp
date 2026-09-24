@@ -35,14 +35,44 @@ read back from those fields: editing one locally does nothing, and running the c
 it.
 
 On the server console, where there is no client to show a page to, it prints the same configuration
-instead:
+instead. On a server that is [local only](#local-only), which is the default, that looks like:
 
 ```
 MCP server listening on port 8765
-This token is personal to you. Anyone who has it can build on this server as you, so do not
-share it or paste it anywhere public.
-Add this to your MCP client configuration, replacing <server-host> with this server's
-address (127.0.0.1 if it is the same machine as the agent):
+Add this to your MCP client configuration on this machine. This server is local only, so it
+accepts connections from this machine alone; to use it from other devices, set "localOnly": false
+in mcp.json and restart.
+{
+  "mcpServers": {
+    "hytale-prefab": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp"
+    }
+  }
+}
+```
+
+Or point an agent on the same machine at it directly:
+
+```
+claude mcp add --transport http hytale-prefab http://127.0.0.1:8765/mcp
+```
+
+### Local only
+
+By default the listener binds to the loopback address (`127.0.0.1`), the address a machine uses to
+talk to itself. Traffic to it never leaves the machine, so only an agent running on the same machine
+as the Hytale server can connect, and `/prefab-mcp` always gives `127.0.0.1` as the host.
+
+To use it from other devices, set `localOnly` to `false` in `mcp.json` and restart. The listener then
+binds to `0.0.0.0`, every network address the machine has, and accepts connections from any device
+that can reach the port. `/prefab-mcp` then prints a `<server-host>` placeholder instead, because
+where the agent runs relative to the server, and whether a reverse proxy or DNS name sits in front, is
+not something the server can see, so it asks rather than guesses:
+
+```
+Add this to your MCP client configuration. Replace <server-host> with this server's address, or
+127.0.0.1 if the agent runs on this machine.
 {
   "mcpServers": {
     "hytale-prefab": {
@@ -56,25 +86,34 @@ address (127.0.0.1 if it is the same machine as the agent):
 }
 ```
 
-The port is known; the host is not. Where the agent runs relative to the server, and whether a
-reverse proxy or DNS name sits in front, is not something the server can see, so it asks rather than
-guesses. Note that the listener is bound to loopback, so today the answer is `127.0.0.1` and a remote
-agent needs a tunnel: `ssh -L 8765:127.0.0.1:8765 user@server`.
+Before turning it off:
 
-Or point an agent at it directly:
+- **Turn on personal tokens.** With `localOnly` false and `requirePersonalToken` false, anyone who
+  can reach the port may use every tool, and the plugin says so at boot:
 
-```
-claude mcp add --transport http hytale-prefab http://127.0.0.1:8765/mcp
-```
+  ```
+  [PrefabMcp|P] "localOnly" is false and personal tokens are not required: the plugin's MCP endpoint
+                can be used by anyone on the internet who can reach this port. Set
+                "requirePersonalToken": true in mcp.json to require one.
+  ```
 
-The listener binds to loopback only, and refuses requests carrying a cross-origin `Origin` header, so
-it is reachable by an agent on the same machine and by nothing else.
+- **The endpoint is plain HTTP.** Tokens travel unencrypted, so anyone on the network path can read
+  one. On anything but a trusted network, put a TLS reverse proxy in front instead, or leave
+  `localOnly` on and reach it through an SSH tunnel:
+  `ssh -L 8765:127.0.0.1:8765 user@server`, then use `http://127.0.0.1:8765/mcp` on the agent's
+  machine.
+- **The port must be reachable**: open it in the host's firewall, and forward it on your router if
+  the agent is outside your network.
+
+Whichever mode it is in, requests carrying a cross-origin `Origin` header are refused, so a web page
+open in someone's browser cannot drive the server.
 
 ### Authentication
 
 Off by default. A new server sets `requirePersonalToken` to `false`, so it works the moment it boots:
-the listener is bound to loopback, so reaching it already means being on the machine. Turning it on
-is what matters once the endpoint is shared, through a tunnel or a proxy.
+a new server is also [local only](#local-only), so reaching it already means being on the machine.
+Turning it on is what matters once the endpoint is shared, whether by turning `localOnly` off or
+through a tunnel or a proxy.
 
 ```json
 { "requirePersonalToken": true }
@@ -162,9 +201,12 @@ On first load the plugin writes `mods/games.crescentnetwork_PrefabMcp/mcp.json`:
 {
   "port": 7520,
   "tokenSecret": "rK-FDBd0xT66CRThXuR30VQDwpj6D3-iSFveyJLinJw",
-  "requirePersonalToken": false
+  "requirePersonalToken": false,
+  "localOnly": true
 }
 ```
+
+`localOnly` decides whether other devices can connect; see [Local only](#local-only).
 
 `tokenSecret` is generated once with `SecureRandom` and is the salt every personal token derives
 from. It is never shipped with a default, because a default would make every server's tokens

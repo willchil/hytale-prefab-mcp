@@ -32,17 +32,21 @@ public final class PrefabMcpPage extends InteractiveCustomUIPage<PrefabMcpPage.P
     /** Relative to {@code Common/UI/Custom/} in this plugin's asset pack. */
     private static final String LAYOUT = "PrefabMcpPage.ui";
 
+    private final String instructions;
     private final String configurationJson;
     @Nullable
     private final String token;
 
     /**
-    * @param configurationJson the pretty-printed client configuration
+     * @param instructions      what to do with the configuration, which depends on whether the
+     *                          server is local only
+     * @param configurationJson the pretty-printed client configuration
      * @param token             the player's personal token, or null when the server requires none
      */
-    public PrefabMcpPage(@Nonnull PlayerRef playerRef, @Nonnull String configurationJson,
-                         @Nullable String token) {
+    public PrefabMcpPage(@Nonnull PlayerRef playerRef, @Nonnull String instructions,
+                         @Nonnull String configurationJson, @Nullable String token) {
         super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, PageEventData.CODEC);
+        this.instructions = instructions;
         this.configurationJson = configurationJson;
         this.token = token;
     }
@@ -51,6 +55,7 @@ public final class PrefabMcpPage extends InteractiveCustomUIPage<PrefabMcpPage.P
     public void build(@Nonnull Ref<EntityStore> ref, @Nonnull UICommandBuilder commandBuilder,
                       @Nonnull UIEventBuilder eventBuilder, @Nonnull Store<EntityStore> store) {
         commandBuilder.append(LAYOUT);
+        commandBuilder.set("#Instructions.Text", instructions);
         commandBuilder.set("#Config.Value", configurationJson);
 
         // The token section is hidden rather than left blank on a server that does not require one,

@@ -124,9 +124,19 @@ public final class McpPlugin extends JavaPlugin {
                 McpConfig.REQUIRE_PERSONAL_TOKEN, McpConfig.FILE_NAME);
         }
 
+        // Only the combination is dangerous: an open endpoint on loopback needs someone already on
+        // the machine, and a network-facing one with tokens still needs a token.
+        if (!config.localOnly() && !config.requirePersonalToken()) {
+            getLogger().at(Level.WARNING).log(
+                "\"%s\" is false and personal tokens are not required: the plugin's MCP endpoint can be "
+                    + "used by anyone on the internet who can reach this port. Set \"%s\": true in %s "
+                    + "to require one.",
+                McpConfig.LOCAL_ONLY, McpConfig.REQUIRE_PERSONAL_TOKEN, McpConfig.FILE_NAME);
+        }
+
         int port = portOverride() != null ? portOverride() : config.port();
 
-        if (httpServer.start(port)) {
+        if (httpServer.start(port, config.localOnly())) {
             BlockCatalog catalog = services.catalog();
             getLogger().at(Level.INFO).log(
                 "MCP server listening on %s (%d palette entries). Connect with: claude mcp add --transport http hytale-prefab %s",
