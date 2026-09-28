@@ -128,16 +128,16 @@ the ones an operator or the in-game editor made.
 
 ### Permission
 
-`/prefab-mcp` and every MCP request require `games.crescentnetwork.prefabmcp.command`. The node is logged at
+`/prefab-mcp` and every MCP request require `willchil.prefabmcp.command`. The node is logged at
 startup:
 
 ```
-[PrefabMcp|P] Registered /prefab-mcp (permission: games.crescentnetwork.prefabmcp.command)
+[PrefabMcp|P] Registered /prefab-mcp (permission: willchil.prefabmcp.command)
 ```
 
 ### Configuration
 
-On first load the plugin writes `mods/games.crescentnetwork_PrefabMcp/mcp.json`:
+On first load the plugin writes `mods/willchil_PrefabMcp/mcp.json`:
 
 ```json
 {

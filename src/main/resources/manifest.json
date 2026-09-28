@@ -1,5 +1,5 @@
 {
-  "Group": "games.crescentnetwork",
+  "Group": "willchil",
   "Name": "PrefabMcp",
   "Version": "1.0.0",
   "Description": "Hosts an MCP server so agentic harnesses can search the live block palette and author prefabs",
@@ -13,5 +13,5 @@
   "OptionalDependencies": {},
   "DisabledByDefault": false,
   "IncludesAssetPack": true,
-  "Main": "games.crescentnetwork.mcp.McpPlugin"
+  "Main": "willchil.mcp.McpPlugin"
 }
