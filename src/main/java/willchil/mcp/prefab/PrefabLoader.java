@@ -22,12 +22,12 @@ public final class PrefabLoader {
     }
 
     /**
-     * Loads a prefab by name from the caller's own directory.
+     * Loads a prefab by name from one of the caller's own directories.
      *
      * <p>Looks only where that caller writes, so one player's render cannot reach into another's
      * prefabs just by guessing a name.
      */
-    public static BuildRecorder load(String name, String directory) {
+    public static BuildRecorder load(String name, Path directory) {
         String cleaned = PrefabWriter.cleanName(name);
         Path target = PrefabWriter.resolveTarget(cleaned, directory);
 
@@ -37,7 +37,7 @@ public final class PrefabLoader {
         } catch (RuntimeException e) {
             if (!exists(target)) {
                 throw new ScriptError(ScriptError.Phase.VALIDATE,
-                    "No prefab named \"" + cleaned + "\" in the server prefabs directory.");
+                    "No prefab named \"" + cleaned + "\".");
             }
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             throw new ScriptError(ScriptError.Phase.VALIDATE,
@@ -45,9 +45,14 @@ public final class PrefabLoader {
         }
         if (selection == null) {
             throw new ScriptError(ScriptError.Phase.VALIDATE,
-                "No prefab named \"" + cleaned + "\" in the server prefabs directory.");
+                "No prefab named \"" + cleaned + "\".");
         }
         return toRecorder(selection);
+    }
+
+    /** Whether a prefab of that name is on disk in {@code directory}. */
+    public static boolean exists(String name, Path directory) {
+        return exists(PrefabWriter.resolveTarget(PrefabWriter.cleanName(name), directory));
     }
 
     private static boolean exists(Path target) {

@@ -11,9 +11,10 @@ import willchil.mcp.prefab.PrefabWriter;
 import willchil.mcp.script.ScriptError;
 import willchil.mcp.script.ScriptRunner;
 
+import java.nio.file.Path;
 import java.util.List;
 
-/** Runs a build script and saves the result as a prefab. */
+/** Runs a build script and saves the result as a prefab in the caller's staging area. */
 public final class BuildPrefabTool implements McpTool {
 
     private static final long DEFAULT_TIMEOUT_MS = 10_000;
@@ -35,12 +36,13 @@ public final class BuildPrefabTool implements McpTool {
     public String description() {
         return """
             Run a JavaScript build script on the server and save the result as a Hytale .prefab.json \
-            in the server's prefabs/ directory.
+            in a private staging area that players cannot see.
 
             You write the script; this tool only executes it. Plan the structure yourself, then place \
             blocks with the functions below. Block names must be real names from this server's \
             palette, so use search_blocks first. After building, use render_prefab to look at what you \
-            made and iterate.
+            made and iterate. When it is finished, call publish_prefab to make it available in game. \
+            Staged builds are deleted when the server stops, so publish anything worth keeping.
 
             LANGUAGE: plain JavaScript only, not TypeScript. No modules, no async/await, no require, \
             no I/O. Math and the usual built-ins are available.
@@ -99,7 +101,7 @@ public final class BuildPrefabTool implements McpTool {
         Schema.prop(schema, "code", "string",
             "The JavaScript build script.");
         JsonObject overwrite = Schema.prop(schema, "overwrite", "boolean",
-            "Replace an existing prefab of the same name.");
+            "Replace an existing staged prefab of the same name.");
         Schema.defaultValue(overwrite, false);
         JsonObject seed = Schema.prop(schema, "seed", "integer",
             "Seed for rng(). The same seed reproduces the same build.");
@@ -143,19 +145,20 @@ public final class BuildPrefabTool implements McpTool {
             return ToolResult.failure("Build failed unexpectedly: " + message);
         }
 
-        String directory = PrefabLocation.directoryFor(caller);
+        Path directory;
         PrefabWriter.Saved saved;
         try {
+            directory = PrefabLocation.stagingDirectory(services.stagingRoot(), caller);
             saved = PrefabWriter.write(result.recorder(), name, overwrite, directory);
         } catch (ScriptError e) {
             return ToolResult.failure(format(e));
         }
 
         // Kept so render_prefab can show this build straight back without re-reading it from disk.
-        services.rememberBuild(directory, PrefabWriter.cleanName(name), result.recorder());
+        services.rememberBuild(directory.toString(), PrefabWriter.cleanName(name), result.recorder());
 
         StringBuilder out = new StringBuilder();
-        out.append("Saved ").append(saved.path()).append('\n')
+        out.append("Staged ").append(PrefabWriter.cleanName(name)).append('\n')
             .append("blocks: ").append(saved.blockCount());
         if (saved.fillerCount() > 0) {
             out.append(" (+").append(saved.fillerCount()).append(" filler cells for multi-cell blocks)");
@@ -170,7 +173,7 @@ public final class BuildPrefabTool implements McpTool {
             for (String line : result.log()) out.append("  ").append(line).append('\n');
         }
         out.append("\nUse render_prefab with name=\"").append(PrefabWriter.cleanName(name))
-            .append("\" to see it.");
+            .append("\" to see it, and publish_prefab when it is finished.");
         return ToolResult.text(out.toString());
     }
 

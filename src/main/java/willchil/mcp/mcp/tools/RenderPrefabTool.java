@@ -16,7 +16,9 @@ import willchil.mcp.render.VoxelScene;
 import willchil.mcp.script.BuildRecorder;
 import willchil.mcp.script.ScriptError;
 
-/** Renders a saved prefab to a PNG from a camera the caller chooses. */
+import java.nio.file.Path;
+
+/** Renders a staged or published prefab to a PNG from a camera the caller chooses. */
 public final class RenderPrefabTool implements McpTool {
 
     private static final int DEFAULT_WIDTH = 768;
@@ -39,8 +41,9 @@ public final class RenderPrefabTool implements McpTool {
     @Override
     public String description() {
         return """
-            Render a saved prefab to an image so you can see what you actually built and fix what \
-            looks wrong.
+            Render a prefab to an image so you can see what you actually built and fix what looks \
+            wrong. The name is looked up among your staged builds first, then among the prefabs you \
+            have published.
 
             The camera orbits the build: yaw turns around it, pitch raises the viewpoint, and the \
             distance is solved automatically to frame the whole thing unless you set one. Render a few \
@@ -89,24 +92,20 @@ public final class RenderPrefabTool implements McpTool {
             return ToolResult.failure("The block palette is not loaded yet; the server is still booting.");
         }
 
-        String directory = PrefabLocation.directoryFor(caller);
         String requested = JsonRpc.stringOr(arguments, "name", null);
-        if (requested == null || requested.isBlank()) {
-            requested = services.lastBuildName(directory);
-            if (requested == null) {
-                return ToolResult.failure(
-                    "No prefab name given and nothing has been built this session. Pass name.");
-            }
-        }
-
         String cleaned;
         BuildRecorder recorder;
         try {
+            Path staging = PrefabLocation.stagingDirectory(services.stagingRoot(), caller);
+            if (requested == null || requested.isBlank()) {
+                requested = services.lastBuildName(staging.toString());
+                if (requested == null) {
+                    return ToolResult.failure(
+                        "No prefab name given and nothing has been built this session. Pass name.");
+                }
+            }
             cleaned = PrefabWriter.cleanName(requested);
-            // A build from this session is already in memory; anything else is read back from disk,
-            // so prefabs made earlier or by the in-game editor can be inspected too.
-            BuildRecorder cached = services.recentBuild(directory, cleaned);
-            recorder = cached != null ? cached : PrefabLoader.load(cleaned, directory);
+            recorder = load(cleaned, staging, caller);
         } catch (ScriptError e) {
             return ToolResult.failure(BuildPrefabTool.format(e));
         } catch (RuntimeException e) {
@@ -156,6 +155,22 @@ public final class RenderPrefabTool implements McpTool {
             + "\nbuild " + scene.sizeX() + " x " + scene.sizeY() + " x " + scene.sizeZ()
             + ", " + scene.cellCount() + " cells, rendered " + width + "x" + height + " in " + millis + "ms";
         return ToolResult.image(png, "image/png", caption);
+    }
+
+    /**
+     * A build from this session is already in memory; anything else is read back from disk, from
+     * staging first and then from the published folder, so prefabs made earlier or by the in-game
+     * editor can be inspected too.
+     */
+    private BuildRecorder load(String cleaned, Path staging, McpCaller caller) {
+        BuildRecorder cached = services.recentBuild(staging.toString(), cleaned);
+        if (cached != null) return cached;
+        if (PrefabLoader.exists(cleaned, staging)) return PrefabLoader.load(cleaned, staging);
+
+        Path published = PrefabLocation.publishedDirectory(caller);
+        if (PrefabLoader.exists(cleaned, published)) return PrefabLoader.load(cleaned, published);
+        throw new ScriptError(ScriptError.Phase.VALIDATE,
+            "No staged or published prefab named \"" + cleaned + "\".");
     }
 
     private static double[] parseTarget(JsonObject arguments, VoxelScene scene) {

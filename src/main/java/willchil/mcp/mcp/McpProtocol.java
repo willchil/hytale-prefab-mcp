@@ -94,8 +94,9 @@ public final class McpProtocol {
         result.add("serverInfo", serverInfo);
         result.addProperty("instructions",
             "Author Hytale prefabs. Start with search_blocks to find real block names on this server, "
-                + "check a material with get_block_information, build with build_prefab, then look at the "
-                + "result with render_prefab and iterate.");
+                + "check a material with get_block_information, build with build_prefab, look at the "
+                + "result with render_prefab and iterate, then publish_prefab once it is finished. Builds are "
+                + "staged privately and players only see what you publish.");
         return result;
     }
 

@@ -1,16 +1,26 @@
 package willchil.mcp.prefab;
 
+import com.hypixel.hytale.common.util.PathUtil;
+import com.hypixel.hytale.server.core.prefab.PrefabStore;
+import willchil.mcp.McpConfig;
 import willchil.mcp.mcp.McpCaller;
+import willchil.mcp.script.ScriptError;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.Locale;
+import java.util.stream.Stream;
 
 /**
- * Decides which directory under {@code prefabs/} a generated prefab belongs in.
+ * Decides which directories a generated prefab belongs in: the private staging area it is built in,
+ * and the folder under {@code prefabs/} it is published to.
  *
- * <p>Everything this plugin writes lives under one folder, so agent-made prefabs never mix with the
+ * <p>Everything this plugin publishes lives under one folder, so agent-made prefabs never mix with the
  * ones an operator or the in-game editor made. Within it, a server that requires personal tokens
- * knows who is calling and files each player's work separately.
+ * knows who is calling and files each player's work separately. Staging is split the same way.
  */
 public final class PrefabLocation {
 
@@ -38,10 +48,67 @@ public final class PrefabLocation {
      * </ul>
      */
     public static String directoryFor(McpCaller caller) {
-        if (!caller.isIdentified()) return ROOT;
+        String folder = subfolderFor(caller);
+        return folder == null ? ROOT : ROOT + "/" + folder;
+    }
+
+    /**
+     * The caller's own folder name, shared by the staging and published layouts: null for an
+     * anonymous caller, the sanitised username for one who is online, {@link #OFFLINE} otherwise.
+     */
+    @Nullable
+    public static String subfolderFor(McpCaller caller) {
+        if (!caller.isIdentified()) return null;
 
         String folder = sanitize(caller.playerName());
-        return folder == null ? ROOT + "/" + OFFLINE : ROOT + "/" + folder;
+        return folder == null ? OFFLINE : folder;
+    }
+
+    /** Where a caller's finished prefabs are published: {@link #directoryFor} inside the server prefabs directory. */
+    public static Path publishedDirectory(McpCaller caller) {
+        return within(PrefabStore.get().getServerPrefabsPath(), directoryFor(caller));
+    }
+
+    /**
+     * Where a caller's work in progress is built, inside {@code stagingRoot}.
+     *
+     * <p>Staging sits outside {@code prefabs/} entirely, so nothing half-built ever shows up in the
+     * in-game prefab browser.
+     */
+    public static Path stagingDirectory(Path stagingRoot, McpCaller caller) {
+        String folder = subfolderFor(caller);
+        return folder == null ? stagingRoot : within(stagingRoot, folder);
+    }
+
+    /**
+     * Deletes the staging area and everything in it.
+     *
+     * <p>Run at shutdown, so unpublished work never outlives the session. Never throws: a file that
+     * cannot be removed must not hold up the server stopping, so it is reported and skipped.
+     */
+    public static void clearStaging(Path stagingRoot, McpConfig.Problems onProblem) {
+        if (!Files.exists(stagingRoot)) return;
+        try (Stream<Path> walk = Files.walk(stagingRoot)) {
+            // Deepest first, so each directory is empty by the time it is reached.
+            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException e) {
+                    onProblem.report("Could not delete staged file " + path + ": " + e);
+                }
+            });
+        } catch (IOException | RuntimeException e) {
+            onProblem.report("Could not clear the prefab staging area " + stagingRoot + ": " + e);
+        }
+    }
+
+    private static Path within(Path base, String relative) {
+        Path resolved = PathUtil.resolvePathWithinDir(base, relative);
+        if (resolved == null) {
+            throw new ScriptError(ScriptError.Phase.SAVE,
+                "Prefab directory \"" + relative + "\" escapes " + base.getFileName() + ".");
+        }
+        return resolved;
     }
 
     /**

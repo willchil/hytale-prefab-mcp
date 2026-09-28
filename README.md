@@ -3,14 +3,16 @@
 Hosts an [MCP](https://modelcontextprotocol.io) server inside a Hytale server so an agents such as Claude Code,
 Github Copilot, or Codex can author prefabs against that server's own live block palette.
 
-Four tools are available: search the palette, inspect a block, run a build script, render the result.
+Five tools are available: search the palette, inspect a block, run a build script, render the result, and
+publish it once it is finished.
 
 | MCP tool | Description |
 | --- | --- |
 | `search_blocks` | Real names from the running server, mods included, with each block's size in cells |
 | `get_block_information` | Everything about a block: its face texture (or inventory icon for model-drawn blocks), size and footprint at each rotation, supported yaw/pitch, and model extent |
-| `build_prefab` | Runs your JavaScript, writes prefabs/prefab-mcp/<name>.prefab.json |
+| `build_prefab` | Runs your JavaScript, writes `<name>.prefab.json` to a private [staging area](#where-prefabs-are-created) |
 | `render_prefab` | PNG from any camera angle, so the agent can see what it built |
+| `publish_prefab` | Copies a staged prefab into `prefabs/prefab-mcp/`, where players can find it |
 
 ## Build and install
 
@@ -117,14 +119,24 @@ stops verifying. **To revoke one player**, take away their permission.
 
 ### Where prefabs are created
 
-Everything this plugin writes goes under `prefabs/prefab-mcp/`, so agent-made prefabs never mix with
-the ones an operator or the in-game editor made.
+`build_prefab` writes to a staging area in the plugin's data directory,
+`mods/willchil_PrefabMcp/staging/`. That is outside `prefabs/`, so the agent's unfinished iterations
+never show up in game. `render_prefab` reads from staging first. Only `publish_prefab` writes to
+`prefabs/prefab-mcp/`, so agent-made prefabs never mix with the ones an operator or the in-game editor
+made.
 
-| Caller | Directory |
-|---|---|
-| Anonymous, on a server not requiring tokens | `prefabs/prefab-mcp/` |
-| A player who was online at the time | `prefabs/prefab-mcp/<username>/` |
-| A player who was offline at the time | `prefabs/prefab-mcp/offline-players/` |
+**The staging area is deleted when the server shuts down.** Anything the agent did not publish is lost.
+
+Both locations are split by caller in the same way:
+
+| Caller | Staging | Published |
+|---|---|---|
+| Anonymous, on a server not requiring tokens | `staging/` | `prefabs/prefab-mcp/` |
+| A player who was online at the time | `staging/<username>/` | `prefabs/prefab-mcp/<username>/` |
+| A player who was offline at the time | `staging/offline-players/` | `prefabs/prefab-mcp/offline-players/` |
+
+`build_prefab` and `publish_prefab` each take `overwrite`, which replaces an existing prefab of the
+same name in staging or in the published folder respectively.
 
 ### Permission
 

@@ -6,6 +6,7 @@ import willchil.mcp.render.model.ModelLibrary;
 import willchil.mcp.script.BuildRecorder;
 
 import javax.annotation.Nullable;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -25,6 +26,9 @@ public final class McpServices {
     private final AtomicReference<BlockCatalog> catalog = new AtomicReference<>();
     private final TextureCache textures = new TextureCache();
     private final ModelLibrary models = new ModelLibrary(textures);
+
+    /** Where builds are staged before publishing; set once while the plugin is set up. */
+    private volatile Path stagingRoot;
 
     /** Access is synchronised on the map itself; tools run on the HTTP pool's threads. */
     private final Map<String, BuildRecorder> recentBuilds =
@@ -48,6 +52,14 @@ public final class McpServices {
         // Assets may have been reskinned or remodelled, so anything decoded before can be stale.
         textures.clear();
         models.clear();
+    }
+
+    public Path stagingRoot() {
+        return stagingRoot;
+    }
+
+    public void setStagingRoot(Path root) {
+        stagingRoot = root;
     }
 
     public TextureCache textures() {
@@ -75,6 +87,14 @@ public final class McpServices {
     public BuildRecorder recentBuild(String directory, String name) {
         synchronized (recentBuilds) {
             return recentBuilds.get(key(directory, name));
+        }
+    }
+
+    /** Forgets every remembered build, for when the staging area they came from is cleared. */
+    public void clearBuilds() {
+        synchronized (recentBuilds) {
+            recentBuilds.clear();
+            lastBuildNames.clear();
         }
     }
 

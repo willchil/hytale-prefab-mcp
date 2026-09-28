@@ -20,9 +20,11 @@ import willchil.mcp.mcp.McpServices;
 import willchil.mcp.mcp.McpTool;
 import willchil.mcp.mcp.tools.BuildPrefabTool;
 import willchil.mcp.mcp.tools.GetBlockInformationTool;
+import willchil.mcp.mcp.tools.PublishPrefabTool;
 import willchil.mcp.mcp.tools.RenderPrefabTool;
 import willchil.mcp.mcp.tools.SearchBlocksTool;
 import willchil.mcp.palette.BlockCatalog;
+import willchil.mcp.prefab.PrefabLocation;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -42,6 +44,9 @@ public final class McpPlugin extends JavaPlugin {
     /** Used only when the game's bind port cannot be read at all. */
     private static final int FALLBACK_PORT = 8765;
 
+    /** Staging lives in the plugin's data directory, well away from the prefabs players browse. */
+    private static final String STAGING_DIRECTORY = "staging";
+
     private final McpServices services = new McpServices();
 
     private McpHttpServer httpServer;
@@ -54,10 +59,12 @@ public final class McpPlugin extends JavaPlugin {
 
     @Override
     protected void setup() {
+        services.setStagingRoot(getDataDirectory().resolve(STAGING_DIRECTORY));
         List<McpTool> tools = List.of(
             new SearchBlocksTool(services),
             new GetBlockInformationTool(services),
             new BuildPrefabTool(services),
+            new PublishPrefabTool(services),
             new RenderPrefabTool(services));
         // Read here rather than at boot: the command and the authenticator both need the secret,
         // and both are built while the plugin is being set up.
@@ -189,6 +196,13 @@ public final class McpPlugin extends JavaPlugin {
     private void shutdownServer() {
         if (httpServer != null) {
             httpServer.stop();
+        }
+        // After the listener stops, so no build is still writing into it. Staged work is only ever a
+        // draft; anything worth keeping was published to prefabs/ and is not touched here.
+        if (services.stagingRoot() != null) {
+            PrefabLocation.clearStaging(services.stagingRoot(),
+                message -> getLogger().at(Level.WARNING).log("%s", message));
+            services.clearBuilds();
         }
     }
 

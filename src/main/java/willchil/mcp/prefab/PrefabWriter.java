@@ -20,7 +20,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Turns what a script placed into a {@code .prefab.json} in the server's {@code prefabs/} directory.
+ * Turns what a script placed into a {@code .prefab.json}, and publishes a staged one to the server's
+ * {@code prefabs/} directory.
  *
  * <p>The file is never hand-encoded. A {@link BlockSelection} is handed to
  * {@link PrefabStore#savePrefab}, and the server writes it with its own serializer, which stamps the
@@ -56,9 +57,9 @@ public final class PrefabWriter {
     /**
      * @param name      prefab file name, without the {@code .prefab.json} suffix
      * @param overwrite whether an existing prefab of that name may be replaced
-     * @param directory where to write it, relative to the server prefabs directory
+     * @param directory where to write it, already resolved by {@link PrefabLocation}
      */
-    public static Saved write(BuildRecorder recorder, String name, boolean overwrite, String directory) {
+    public static Saved write(BuildRecorder recorder, String name, boolean overwrite, Path directory) {
         String cleaned = cleanName(name);
         BuildRecorder.Bounds bounds = recorder.bounds();
 
@@ -78,12 +79,45 @@ public final class PrefabWriter {
             new Vector3i(area[0], area[1], area[2]),
             new Vector3i(area[3], area[4], area[5]));
 
-        Path target = resolveTarget(cleaned, directory);
-        Path written;
+        Path written = save(resolveTarget(cleaned, directory), selection, overwrite, cleaned);
+
+        return new Saved(written, recorder.blockCount(), fillerCount, recorder.fluidCount(),
+            area[3] - area[0] + 1, area[4] - area[1] + 1, area[5] - area[2] + 1, recorder.namesUsed().size());
+    }
+
+    /**
+     * Copies a staged prefab into its published directory, where players can find it.
+     *
+     * <p>Read and re-saved through {@link PrefabStore} rather than copied as a file: the store picks
+     * the on-disk format, removes a sibling left in the other format, and drops its own cache entry
+     * for the target, so an overwritten prefab is not served stale in game.
+     *
+     * @return the path actually written
+     */
+    public static Path publish(String name, Path stagingDirectory, Path publishedDirectory, boolean overwrite) {
+        String cleaned = cleanName(name);
+        Path staged = resolveTarget(cleaned, stagingDirectory);
+        if (!PrefabStore.get().prefabExists(staged)) {
+            throw new ScriptError(ScriptError.Phase.SAVE,
+                "No staged prefab named \"" + cleaned + "\". Build it with build_prefab first.");
+        }
+
+        BlockSelection selection;
+        try {
+            selection = PrefabStore.get().getPrefab(staged);
+        } catch (RuntimeException e) {
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new ScriptError(ScriptError.Phase.SAVE,
+                "Could not read staged prefab \"" + cleaned + "\": " + message);
+        }
+        return save(resolveTarget(cleaned, publishedDirectory), selection, overwrite, cleaned);
+    }
+
+    private static Path save(Path target, BlockSelection selection, boolean overwrite, String cleaned) {
         try {
             // AUTO writes .prefab.json below the large-prefab threshold, which the cell cap keeps us
             // under, and .lpf above it.
-            written = PrefabStore.get().savePrefab(target, selection, overwrite, PrefabFormat.AUTO);
+            return PrefabStore.get().savePrefab(target, selection, overwrite, PrefabFormat.AUTO);
         } catch (RuntimeException e) {
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             if (message.contains("ALREADY_EXISTS") || e.getClass().getSimpleName().equals("PrefabSaveException")) {
@@ -93,9 +127,6 @@ public final class PrefabWriter {
             }
             throw new ScriptError(ScriptError.Phase.SAVE, "Could not save prefab \"" + cleaned + "\": " + message);
         }
-
-        return new Saved(written, recorder.blockCount(), fillerCount, recorder.fluidCount(),
-            area[3] - area[0] + 1, area[4] - area[1] + 1, area[5] - area[2] + 1, recorder.namesUsed().size());
     }
 
     /**
@@ -179,23 +210,17 @@ public final class PrefabWriter {
     }
 
     /**
-     * Resolves a prefab path inside the server prefabs directory.
+     * Resolves a prefab path inside a directory {@link PrefabLocation} has already guarded.
      *
-     * <p>The subdirectory and the file name are resolved in two guarded steps, so neither a caller's
-     * name nor a player's username can climb out of the prefabs directory. Nothing is created here;
-     * {@code PrefabStore.savePrefab} makes the parent directories when it writes.
+     * <p>The file name gets its own guard, so a caller's name cannot climb out of that directory.
+     * Nothing is created here; {@code PrefabStore.savePrefab} makes the parent directories when it
+     * writes.
      */
-    public static Path resolveTarget(String cleanedName, String directory) {
-        Path base = PrefabStore.get().getServerPrefabsPath();
-        Path dir = PathUtil.resolvePathWithinDir(base, directory);
-        if (dir == null) {
-            throw new ScriptError(ScriptError.Phase.SAVE,
-                "Prefab directory \"" + directory + "\" escapes the prefabs directory.");
-        }
-        Path resolved = PathUtil.resolvePathWithinDir(dir, cleanedName);
+    public static Path resolveTarget(String cleanedName, Path directory) {
+        Path resolved = PathUtil.resolvePathWithinDir(directory, cleanedName);
         if (resolved == null) {
             throw new ScriptError(ScriptError.Phase.SAVE,
-                "Prefab name \"" + cleanedName + "\" escapes the prefabs directory.");
+                "Prefab name \"" + cleanedName + "\" escapes its directory.");
         }
         return resolved;
     }
