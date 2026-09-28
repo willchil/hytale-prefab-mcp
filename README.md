@@ -1,7 +1,18 @@
 # PrefabMcp
 
-Hosts an [MCP](https://modelcontextprotocol.io) server inside a Hytale server so an agents such as Claude Code,
+Hosts an [MCP](https://modelcontextprotocol.io) server inside a Hytale server so agents such as Claude Code,
 Github Copilot, or Codex can author prefabs against that server's own live block palette.
+
+<table>
+  <tr>
+    <td><img src="docs/media/agent.gif" height="400" alt="Claude Code building a Utah teapot prefab with the MCP tools (10x speed)"></td>
+    <td><img src="docs/media/orbit.gif" height="400" alt="Orbiting the finished voxel teapot prefab"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>An agent building the Utah teapot (10x speed)</sub></td>
+    <td align="center"><sub>The finished prefab</sub></td>
+  </tr>
+</table>
 
 Five tools are available: search the palette, inspect a block, run a build script, render the result, and
 publish it once it is finished.
@@ -193,7 +204,7 @@ blockAt(x, y, z) / fluidAt(x, y, z)                 name placed there, or null
 clear(x, y, z)                                      remove from both layers
 mirrorX(p) / mirrorY(p) / mirrorZ(p)                duplicate everything across a plane
 findBlocks({query, group, drawType, kind, limit})   array of names
-nearestBlock('#8a8a8a')                           closest block by average colour
+nearestBlock('#8a8a8a')                             closest block by average colour
 setAnchor(x, y, z)                                  prefab anchor, default 0,0,0
 rng()                                               seeded, reproducible for a given seed
 log(message)                                        returned with the result
