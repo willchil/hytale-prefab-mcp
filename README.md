@@ -3,12 +3,12 @@
 Hosts an [MCP](https://modelcontextprotocol.io) server inside a Hytale server so an agents such as Claude Code,
 Github Copilot, or Codex can author prefabs against that server's own live block palette.
 
-Four tools are available: search the palette, look at a block, run a build script, render the result.
+Four tools are available: search the palette, inspect a block, run a build script, render the result.
 
 | MCP tool | Description |
 | --- | --- |
 | `search_blocks` | Real names from the running server, mods included, with each block's size in cells |
-| `get_block_texture` | Face texture, or the inventory icon for model-drawn blocks, plus footprint and rotations |
+| `get_block_information` | Everything about a block: its face texture (or inventory icon for model-drawn blocks), size and footprint at each rotation, supported yaw/pitch, and model extent |
 | `build_prefab` | Runs your JavaScript, writes prefabs/prefab-mcp/<name>.prefab.json |
 | `render_prefab` | PNG from any camera angle, so the agent can see what it built |
 
@@ -209,7 +209,7 @@ Yaw turns a block about the vertical axis the same way Hytale turns its hitbox: 
 
 Each block allows only its own asset family's rotations. Asking for anything else fails the build
 with the valid combinations, rather than being snapped silently the way the game snaps a
-placement. `get_block_texture` lists them. The mirror helpers turn blocks as well as move them,
+placement. `get_block_information` lists them. The mirror helpers turn blocks as well as move them,
 through the same `BlockRotationUtil.getFlipped` the builder tools use, so a mirrored roof faces the
 other way.
 
@@ -219,7 +219,7 @@ Hytale assets may reach past their own cell: shallow roofs (1x1x2), steep roofs 
 beds (up to 3x3x4), doors, benches, large paintings. Hytale takes a block's footprint from its hitbox,
 not its model, and fills the extra cells with filler that points back at the base cell.
 
-- `search_blocks` has a `cells` column, e.g. `1x1x2`, and `get_block_texture` lists exactly which
+- `search_blocks` has a `cells` column, e.g. `1x1x2`, and `get_block_information` lists exactly which
   offsets a block fills at each rotation, along with how far its model really reaches.
 - `build_prefab` fails a build in which a footprint overlaps another block or another footprint,
   naming the cells. Fluids may share a footprint.

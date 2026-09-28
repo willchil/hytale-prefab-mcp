@@ -89,7 +89,7 @@ final class FootprintCheck {
         if (conflictCount > MAX_REPORTED) {
             message.append("  ...and ").append(conflictCount - MAX_REPORTED).append(" more.\n");
         }
-        message.append("get_block_texture shows each block's footprint at every yaw. Move the block, turn it, "
+        message.append("get_block_information shows each block's footprint at every yaw. Move the block, turn it, "
             + "or clear the cells it needs.");
         throw new ScriptError(ScriptError.Phase.VALIDATE, message.toString());
     }

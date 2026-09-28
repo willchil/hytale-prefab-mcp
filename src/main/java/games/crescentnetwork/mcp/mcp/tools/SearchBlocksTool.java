@@ -46,7 +46,7 @@ public final class SearchBlocksTool implements McpTool {
 
             The cells column is how many cells a block fills: 1 for an ordinary block, or width x \
             height x length at yaw 0 for a multi-cell block such as a shallow roof (1x1x2) or a bed. \
-            The extra cells cannot hold anything else. get_block_texture shows exactly which cells a \
+            The extra cells cannot hold anything else. get_block_information shows exactly which cells a \
             block fills at each yaw, which rotations it supports, and how big its model really is.""";
     }
 

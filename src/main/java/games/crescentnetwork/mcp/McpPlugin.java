@@ -19,7 +19,7 @@ import games.crescentnetwork.mcp.mcp.McpProtocol;
 import games.crescentnetwork.mcp.mcp.McpServices;
 import games.crescentnetwork.mcp.mcp.McpTool;
 import games.crescentnetwork.mcp.mcp.tools.BuildPrefabTool;
-import games.crescentnetwork.mcp.mcp.tools.GetBlockTextureTool;
+import games.crescentnetwork.mcp.mcp.tools.GetBlockInformationTool;
 import games.crescentnetwork.mcp.mcp.tools.RenderPrefabTool;
 import games.crescentnetwork.mcp.mcp.tools.SearchBlocksTool;
 import games.crescentnetwork.mcp.palette.BlockCatalog;
@@ -56,7 +56,7 @@ public final class McpPlugin extends JavaPlugin {
     protected void setup() {
         List<McpTool> tools = List.of(
             new SearchBlocksTool(services),
-            new GetBlockTextureTool(services),
+            new GetBlockInformationTool(services),
             new BuildPrefabTool(services),
             new RenderPrefabTool(services));
         // Read here rather than at boot: the command and the authenticator both need the secret,

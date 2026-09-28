@@ -17,7 +17,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Returns an image of a block, with the facts about its shape that a picture does not convey.
+ * Returns what an agent needs to know about a block: an image of it, plus the facts about its size
+ * and rotations that a picture does not convey.
  *
  * <p>Cubic blocks have real per-face textures, so a named face can be returned directly. Most blocks
  * do not: about 1,300 of them are drawn from a custom model, and for those the only flat image that
@@ -29,34 +30,37 @@ import java.util.Locale;
  * cells long or that a pole is an eighth of a block wide, and those are exactly the facts an agent
  * needs to lay blocks out without overlaps or gaps.
  */
-public final class GetBlockTextureTool implements McpTool {
+public final class GetBlockInformationTool implements McpTool {
 
     private final McpServices services;
 
-    public GetBlockTextureTool(McpServices services) {
+    public GetBlockInformationTool(McpServices services) {
         this.services = services;
     }
 
     @Override
     public String name() {
-        return "get_block_texture";
+        return "get_block_information";
     }
 
     @Override
     public String description() {
         return """
-            Get an image of a block so you can see what it actually looks like before building with it, \
-            together with its size and the rotations it supports.
+            Get everything you need to know about a block before building with it: what it looks like, \
+            how big it is, and how it can be rotated. Call this for any block you are unsure of.
 
-            For a cubic block (drawType=Cube) this returns that block's real face texture, and you can \
-            ask for a specific face. For a block drawn from a custom model, and for anything else \
-            without face textures, it returns the block's inventory icon instead, which is a small \
-            pre-rendered thumbnail of the whole model.
+            Each result has two parts.
 
-            The text alongside the image lists:
-            - which cells the block fills at each supported rotation, as offsets from the cell you \
-            place it at. Multi-cell blocks (shallow roofs, beds, doors) fill neighbouring cells that \
-            must be left empty.
+            An image of the block. For a cubic block (drawType=Cube) this is its real face texture, and \
+            you can ask for a specific face. For a block drawn from a custom model, and for anything \
+            else without face textures, it is the block's inventory icon instead, a small pre-rendered \
+            thumbnail of the whole model.
+
+            Text describing the block:
+            - its drawType and average colour.
+            - its size in cells, and which cells it fills at each supported rotation, as offsets from \
+            the cell you place it at. Multi-cell blocks (shallow roofs, beds, doors) fill neighbouring \
+            cells that must be left empty.
             - the yaw and pitch values build_prefab accepts for it.
             - for a model, how far its geometry really reaches, so you can tell a thin pole or a low \
             slab from a full block. A full cube spans 0..1 on each axis.

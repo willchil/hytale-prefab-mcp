@@ -5,7 +5,7 @@ import com.google.gson.JsonObject;
 import games.crescentnetwork.mcp.mcp.McpCaller;
 import games.crescentnetwork.mcp.mcp.McpServices;
 import games.crescentnetwork.mcp.mcp.McpTool;
-import games.crescentnetwork.mcp.mcp.tools.GetBlockTextureTool;
+import games.crescentnetwork.mcp.mcp.tools.GetBlockInformationTool;
 import games.crescentnetwork.mcp.mcp.tools.SearchBlocksTool;
 import games.crescentnetwork.mcp.palette.Orientation;
 import org.junit.jupiter.api.Test;
@@ -49,7 +49,7 @@ class ToolOutputTest {
 
     @Test
     void blockDetailsListTheFootprintAtEachYaw() {
-        String out = call(new GetBlockTextureTool(services()), "name", "Rock_Stone_Brick_Roof_Shallow");
+        String out = call(new GetBlockInformationTool(services()), "name", "Rock_Stone_Brick_Roof_Shallow");
         assertTrue(out.contains("size: 1x1x2 cells at yaw 0 (hitbox Stairs_Shallow)"), out);
         assertTrue(out.contains("yaw 0: x 0, y 0, z -1..0 (extends 1 north (-Z))"), out);
         assertTrue(out.contains("yaw 90: x -1..0, y 0, z 0 (extends 1 west (-X))"), out);
@@ -60,14 +60,14 @@ class ToolOutputTest {
 
     @Test
     void blockDetailsForAnOrdinaryBlock() {
-        String out = call(new GetBlockTextureTool(services()), "name", "Rock_Stone");
+        String out = call(new GetBlockInformationTool(services()), "name", "Rock_Stone");
         assertTrue(out.contains("size: 1 cell."), out);
         assertTrue(out.contains("rotations: no rotation (yaw 0, pitch 0 only)"), out);
     }
 
     @Test
     void blockDetailsForAFluid() {
-        String out = call(new GetBlockTextureTool(services()), "name", "Water_Source");
+        String out = call(new GetBlockInformationTool(services()), "name", "Water_Source");
         assertTrue(out.contains("Fluids share cells with blocks"), out);
     }
 

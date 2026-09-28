@@ -67,12 +67,12 @@ public final class BuildPrefabTool implements McpTool {
             Yaw turns a block about the vertical axis: whatever faces north (-Z) at yaw 0 faces west \
             (-X) at yaw 90, south (+Z) at 180 and east (+X) at 270. Pitch 180 turns roofs, stairs and \
             slabs upside down, and pitch 90 lays pipes and beams on their side or stands a half slab \
-            on end. Each block supports only some combinations; get_block_texture lists them, and an \
+            on end. Each block supports only some combinations; get_block_information lists them, and an \
             unsupported one fails the build with the valid choices.
 
             MULTI-CELL BLOCKS: some blocks fill more than one cell, such as shallow and steep roofs, \
             beds, doors and benches. search_blocks shows this in its cells column, and \
-            get_block_texture shows which neighbouring cells a block fills at each yaw. Those cells are \
+            get_block_information shows which neighbouring cells a block fills at each yaw. Those cells are \
             written as filler and must be left empty; a build that puts anything else there fails and \
             names the cells. Fluids may share them.
 
