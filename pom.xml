@@ -10,13 +10,13 @@
     <packaging>jar</packaging>
 
     <name>PrefabMcp</name>
-    <description>Hosts an MCP server so agentic harnesses can author Hytale prefabs</description>
+    <description>Hosts an MCP server so agents can author Hytale prefabs</description>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- https://maven.hytale.com/release/com/hypixel/hytale/Server/maven-metadata.xml -->
-        <hytale.server.version>0.6.2</hytale.server.version>
+        <hytale.server.version>0.6.8</hytale.server.version>
         <graaljs.version>24.1.2</graaljs.version>
         <junit.version>6.1.3</junit.version>
         <maven.shade.plugin.version>3.6.2</maven.shade.plugin.version>
