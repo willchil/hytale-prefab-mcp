@@ -92,6 +92,38 @@ public final class Orientation {
         return -1;
     }
 
+    /**
+     * The rotation index that turns a block by {@code inner} and then by {@code outer}, preferring one
+     * without roll when the same turn has both forms, or -1 if no index matches.
+     *
+     * <p>Used when a whole prefab is turned: each block's own rotation has the prefab's turn applied
+     * on top. The result can need a roll even though neither input does, which is left to the caller.
+     */
+    public static int compose(int outer, int inner) {
+        double[] a = matrix(outer), b = matrix(inner);
+        double[] product = new double[9];
+        for (int row = 0; row < 3; row++) {
+            for (int column = 0; column < 3; column++) {
+                double sum = 0;
+                for (int k = 0; k < 3; k++) sum += a[row * 3 + k] * b[k * 3 + column];
+                product[row * 3 + column] = sum;
+            }
+        }
+        // Roll-free indices come first, so they win when a rolled index is the same turn.
+        for (int candidate = 0; candidate < RotationTuple.VALUES.length; candidate++) {
+            if (sameMatrix(matrix(candidate), product)) return candidate;
+        }
+        return -1;
+    }
+
+    /** Compared numerically rather than with {@link Arrays#equals}, which tells 0.0 and -0.0 apart. */
+    private static boolean sameMatrix(double[] a, double[] b) {
+        for (int i = 0; i < 9; i++) {
+            if (Math.abs(a[i] - b[i]) > 1e-6) return false;
+        }
+        return true;
+    }
+
     /** "yaw 90" or "yaw 90, pitch 180", leaving pitch out when it is zero. */
     public static String label(int index) {
         int pitch = pitch(index);

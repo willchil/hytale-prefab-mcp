@@ -55,7 +55,7 @@ public final class BuildPrefabTool implements McpTool {
               sphere(cx, cy, cz, r, name [, opts])
               ellipsoid(cx, cy, cz, rx, ry, rz, name [, opts])
               cylinder(cx, cy, cz, r, h, name [, axis] [, opts])   axis is "x", "y" (default) or "z"
-              prefab(name, x, y, z)                             paste an existing prefab, anchor at x, y, z
+              prefab(name, x, y, z [, opts])                    paste an existing prefab, anchor at x, y, z
 
             FLUIDS: there is no separate fluid call. Pass a fluid name to any of the above and it goes \
             into the prefab's fluid layer, so box(...,"Water_Source") fills a lake. Blocks and fluids \
@@ -64,7 +64,7 @@ public final class BuildPrefabTool implements McpTool {
             inferred from the name (a *_Source name is a full source cell); override with \
             opts {level: 1-8}.
 
-            OPTIONS: opts {yaw, pitch} for blocks, opts {level: n} for fluids, opts {hollow: true} \
+            OPTIONS: opts {yaw, pitch} for blocks and prefab(), opts {level: n} for fluids, opts {hollow: true} \
             for box/sphere/ellipsoid/cylinder.
 
             ORIENTATION: opts {yaw: 0|90|180|270, pitch: 0|90|180|270}, in degrees, both default 0. \
@@ -83,8 +83,10 @@ public final class BuildPrefabTool implements McpTool {
             PREFABS: prefab(name, x, y, z) copies an existing prefab into this build so that its \
             anchor lands at x, y, z, exactly as pasting it in game would. The name is looked up among \
             your staged builds first, then among the prefabs you have published; if neither has it the \
-            build fails. Blocks keep their rotation and replace anything already placed in the same \
-            cells; air is not copied. Use it to reuse a finished piece, such as a tower stamped at each \
+            build fails. opts {yaw, pitch} turns the whole prefab about its anchor, with the same \
+            degrees and directions as a block, and turns every block in it to match; if a block in it \
+            has no rotation that matches, the call fails and names it. Pasted cells replace anything \
+            already placed in the same cells; air is not copied. Use it to reuse a finished piece, such as a tower stamped at each \
             corner of a wall.
 
             QUERY AND EDIT

@@ -1,5 +1,6 @@
 package willchil.mcp;
 
+import willchil.mcp.palette.Orientation;
 import willchil.mcp.script.BuildRecorder;
 import willchil.mcp.script.ScriptError;
 import willchil.mcp.script.ScriptRunner;
@@ -470,5 +471,46 @@ class ScriptRunnerTest {
         assertEquals(ScriptError.Phase.RUNTIME, e.phase());
         assertTrue(e.getMessage().contains("nowhere"), e.getMessage());
         assertEquals(2, e.line());
+    }
+
+    @Test
+    void prefabTurnsAboutItsAnchor() {
+        BuildRecorder piece = run("""
+            block(0, 0, 0, 'Rock_Stone');
+            block(0, 0, -2, 'Rock_Stone_Brick_Roof');
+            block(0, 1, 0, 'Wood_Hardwood_Planks');
+            """);
+        ScriptRunner withPiece = new ScriptRunner(TestPalette.catalog(), name -> piece);
+
+        BuildRecorder yawed = withPiece.run("prefab('piece', 5, 0, 5, {yaw: 90});", FAST).recorder();
+        // Yaw 90 carries north (-Z) round to west (-X), for the cells and for the roof's own facing.
+        assertEquals("Rock_Stone", yawed.blockAt(5, 0, 5).name());
+        assertEquals("Wood_Hardwood_Planks", yawed.blockAt(5, 1, 5).name());
+        assertEquals("Rock_Stone_Brick_Roof", yawed.blockAt(3, 0, 5).name());
+        assertEquals(Orientation.index(90, 0), yawed.blockAt(3, 0, 5).rotation());
+
+        // Upside down: what was above the anchor is now below it, and the stairs are inverted.
+        BuildRecorder stairs = run("""
+            block(0, 0, 0, 'Rock_Stone');
+            block(0, 0, -2, 'Build_Black_Stairs');
+            block(0, 1, 0, 'Wood_Hardwood_Planks');
+            """);
+        BuildRecorder flipped = new ScriptRunner(TestPalette.catalog(), name -> stairs)
+            .run("prefab('stairs', 0, 10, 0, {pitch: 180});", FAST).recorder();
+        assertEquals("Wood_Hardwood_Planks", flipped.blockAt(0, 9, 0).name());
+        assertEquals(0, flipped.blockAt(0, 10, 0).rotation());
+        BuildRecorder.Placement step = flipped.blockAt(0, 10, 2) != null
+            ? flipped.blockAt(0, 10, 2) : flipped.blockAt(0, 10, -2);
+        assertNotNull(step);
+        assertEquals(180, Orientation.pitch(step.rotation()));
+    }
+
+    @Test
+    void prefabTurnABlockCannotTakeFailsAndNamesIt() {
+        BuildRecorder piece = run("block(0, 0, 0, 'Rock_Stone_Brick_Roof');");
+        ScriptRunner withPiece = new ScriptRunner(TestPalette.catalog(), name -> piece);
+        ScriptError e = assertThrows(ScriptError.class,
+            () -> withPiece.run("prefab('piece', 0, 0, 0, {pitch: 90});", FAST));
+        assertTrue(e.getMessage().contains("Rock_Stone_Brick_Roof"), e.getMessage());
     }
 }

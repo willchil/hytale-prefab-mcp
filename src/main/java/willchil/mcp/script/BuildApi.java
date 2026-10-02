@@ -147,9 +147,11 @@ public final class BuildApi {
         });
 
         bindings.putMember("prefab", (ProxyExecutable) a -> {
-            require(a, 4, "prefab(name, x, y, z)");
+            require(a, 4, "prefab(name, x, y, z [, opts])");
+            Value o = opts(a, 4);
             pastePrefab(toName(a[0], "prefab", "prefab"), toInt(a[1], "prefab", "x"),
-                toInt(a[2], "prefab", "y"), toInt(a[3], "prefab", "z"));
+                toInt(a[2], "prefab", "y"), toInt(a[3], "prefab", "z"),
+                Orientation.index(optDegrees(o, "yaw"), optDegrees(o, "pitch")));
             return null;
         });
 
@@ -375,11 +377,17 @@ public final class BuildApi {
      * Copies an existing prefab into the build so that its anchor lands on {@code (x, y, z)}, the way
      * Hytale itself pastes one: every cell goes to its offset from the anchor, added to the target.
      *
-     * <p>Cells are copied as stored, keeping each block's rotation, and replace whatever the script
-     * already put there. Air and filler are not copied: the loader drops both, so the paste overlays
-     * the build the same way a published prefab overlays terrain, and fillers are regenerated on save.
+     * <p>A non-zero {@code turn} rotates the whole prefab about its anchor first. Each cell's offset is
+     * turned, and so is each block's own rotation, so a roof facing north in the prefab faces west
+     * after a yaw of 90 rather than staying put while the building turns under it.
+     *
+     * <p>Cells replace whatever the script already put there. Air and filler are not copied: the
+     * loader drops both, so the paste overlays the build the same way a published prefab overlays
+     * terrain, and fillers are regenerated on save.
+     *
+     * @param turn rotation index for the whole prefab, from {@link Orientation#index}
      */
-    private void pastePrefab(String name, int x, int y, int z) {
+    private void pastePrefab(String name, int x, int y, int z, int turn) {
         String key = name.toLowerCase(Locale.ROOT);
         BuildRecorder source = pastedPrefabs.get(key);
         if (source == null) {
@@ -393,17 +401,108 @@ public final class BuildApi {
         }
         recorder.checkExpansion((long) source.blockCount() + source.fluidCount(), "prefab()");
 
-        int dx = x - source.anchorX(), dy = y - source.anchorY(), dz = z - source.anchorZ();
+        // Every block's new rotation is worked out before anything is written, so a turn that some
+        // block cannot take fails the call without leaving half the prefab behind.
+        Map<Long, Integer> rotations = new HashMap<>();
+        Map<String, String> unsupported = new LinkedHashMap<>();
+        for (var e : source.blocks().entrySet()) {
+            BuildRecorder.Placement p = e.getValue();
+            int rotation = turnedRotation(p, turn);
+            if (rotation < 0) {
+                unsupported.putIfAbsent(p.name(), describeSupported(p.name()));
+            } else {
+                rotations.put(e.getKey(), rotation);
+            }
+        }
+        if (!unsupported.isEmpty()) {
+            StringBuilder out = new StringBuilder("prefab() cannot turn \"" + name + "\" by "
+                + Orientation.label(turn) + ": these blocks have no matching rotation.");
+            int shown = 0;
+            for (var u : unsupported.entrySet()) {
+                if (shown++ >= 5) {
+                    out.append("\n  ...and ").append(unsupported.size() - 5).append(" more");
+                    break;
+                }
+                out.append("\n  ").append(u.getKey()).append(" supports ").append(u.getValue());
+            }
+            throw new ScriptError(ScriptError.Phase.RUNTIME, out.toString());
+        }
+
+        double[] m = Orientation.matrix(turn);
+        int ax = source.anchorX(), ay = source.anchorY(), az = source.anchorZ();
         for (var e : source.blocks().entrySet()) {
             long k = e.getKey();
-            recorder.putBlock(BuildRecorder.unpackX(k) + dx, BuildRecorder.unpackY(k) + dy,
-                BuildRecorder.unpackZ(k) + dz, e.getValue().name(), e.getValue().rotation());
+            int[] at = turned(m, BuildRecorder.unpackX(k) - ax, BuildRecorder.unpackY(k) - ay,
+                BuildRecorder.unpackZ(k) - az);
+            recorder.putBlock(x + at[0], y + at[1], z + at[2], e.getValue().name(), rotations.get(k));
         }
         for (var e : source.fluids().entrySet()) {
             long k = e.getKey();
-            recorder.putFluid(BuildRecorder.unpackX(k) + dx, BuildRecorder.unpackY(k) + dy,
-                BuildRecorder.unpackZ(k) + dz, e.getValue().name(), e.getValue().level());
+            int[] at = turned(m, BuildRecorder.unpackX(k) - ax, BuildRecorder.unpackY(k) - ay,
+                BuildRecorder.unpackZ(k) - az);
+            recorder.putFluid(x + at[0], y + at[1], z + at[2], e.getValue().name(), e.getValue().level());
         }
+    }
+
+    /** An offset turned by a quarter-turn rotation matrix, as {@link Orientation#matrix} builds it. */
+    private static int[] turned(double[] m, int x, int y, int z) {
+        if (m[0] == 1 && m[4] == 1 && m[8] == 1) return new int[]{x, y, z};
+        return new int[]{
+            (int) Math.rint(m[0] * x + m[1] * y + m[2] * z),
+            (int) Math.rint(m[3] * x + m[4] * y + m[5] * z),
+            (int) Math.rint(m[6] * x + m[7] * y + m[8] * z)};
+    }
+
+    /**
+     * A pasted block's rotation once the whole prefab is turned, or -1 when the block has no rotation
+     * that looks the same.
+     *
+     * <p>A block that cannot rotate at all, such as a plain cube, simply stays at rotation 0, the way
+     * the game places one whichever way a player faces. A block missing from the palette keeps the
+     * turned rotation unchecked, since there is nothing to check it against.
+     */
+    private int turnedRotation(BuildRecorder.Placement p, int turn) {
+        if (turn == 0) return p.rotation();
+        int composed = Orientation.compose(turn, p.rotation());
+        BlockInfo info = catalog.find(p.name());
+        if (info == null) {
+            int plain = composed < 0 ? -1 : Orientation.withoutRoll(composed);
+            return plain < 0 ? p.rotation() : plain;
+        }
+        BlockInfo.Geometry g = info.geometry();
+        if (g.rotationMask() == 1) return 0;
+        int plain = composed < 0 ? -1 : Orientation.withoutRoll(composed);
+        if (plain < 0) return -1;
+        int fitted = fit(g, plain);
+        // The game's canonicalisation swaps a rotation for a look-alike, which is right for a fence
+        // turned 180 degrees but would also quietly stand an upside-down roof back up. A different
+        // pitch is never a look-alike, so it counts as unsupported.
+        return fitted >= 0 && Orientation.pitch(fitted) == Orientation.pitch(plain) ? fitted : -1;
+    }
+
+    private String describeSupported(String blockName) {
+        BlockInfo info = catalog.find(blockName);
+        return info == null ? "no rotation" : Orientation.describe(info.geometry().rotations());
+    }
+
+    /**
+     * The rotation a block allows that matches {@code index}, or -1 when there is none.
+     *
+     * <p>A rolled rotation is folded into the equivalent yaw and pitch. When the result is still not
+     * one the block supports, it is canonicalised the way the game canonicalises a placement, so a
+     * fence turned 180 degrees becomes the identical fence at 0.
+     */
+    private static int fit(BlockInfo.Geometry g, int index) {
+        int candidate = Orientation.withoutRoll(index);
+        if (candidate >= 0 && g.allows(candidate)) return candidate;
+
+        var variants = g.variantRotation();
+        if (variants != null) {
+            RotationTuple verified = variants.verify(RotationTuple.get(candidate >= 0 ? candidate : index));
+            int canonical = verified == null ? -1 : Orientation.withoutRoll(verified.index());
+            if (canonical >= 0 && g.allows(canonical)) return canonical;
+        }
+        return -1;
     }
 
     private enum Axis { X, Y, Z }
@@ -455,16 +554,8 @@ public final class BuildApi {
                 case Z -> com.hypixel.hytale.math.Axis.Z;
             });
         if (flipped == null) return p.rotation();
-        int candidate = Orientation.withoutRoll(flipped.index());
-        if (candidate >= 0 && g.allows(candidate)) return candidate;
-
-        var variants = g.variantRotation();
-        if (variants != null) {
-            RotationTuple verified = variants.verify(RotationTuple.get(candidate >= 0 ? candidate : flipped.index()));
-            int canonical = verified == null ? -1 : Orientation.withoutRoll(verified.index());
-            if (canonical >= 0 && g.allows(canonical)) return canonical;
-        }
-        return p.rotation();
+        int fitted = fit(g, flipped.index());
+        return fitted >= 0 ? fitted : p.rotation();
     }
 
     private static int[] reflect(Axis axis, int plane, int x, int y, int z) {

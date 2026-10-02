@@ -199,7 +199,7 @@ line(x1, y1, z1, x2, y2, z2, name [, opts])
 sphere(cx, cy, cz, r, name [, opts])
 ellipsoid(cx, cy, cz, rx, ry, rz, name [, opts])
 cylinder(cx, cy, cz, r, h, name [, axis] [, opts])  axis "x" | "y" (default) | "z"
-prefab(name, x, y, z)                               paste a staged or published prefab, anchor at x, y, z
+prefab(name, x, y, z [, opts])                      paste a staged or published prefab, anchor at x, y, z
 
 blockAt(x, y, z) / fluidAt(x, y, z)                 name placed there, or null
 clear(x, y, z)                                      remove from both layers
@@ -211,7 +211,7 @@ rng()                                               seeded, reproducible for a g
 log(message)                                        returned with the result
 ```
 
-`opts` carries `{yaw, pitch}` for blocks, `{level: n}` for fluids, `{hollow: true}` for the volume
+`opts` carries `{yaw, pitch}` for blocks and for `prefab()`, which turns the whole prefab about its anchor, `{level: n}` for fluids, `{hollow: true}` for the volume
 primitives. Y must be between -512 and 511, because prefabs pack Y into nine signed bits. Later
 writes to a coordinate replace earlier ones.
 
