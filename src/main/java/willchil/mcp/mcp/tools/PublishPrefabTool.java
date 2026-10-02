@@ -1,7 +1,11 @@
 package willchil.mcp.mcp.tools;
 
 import com.google.gson.JsonObject;
+import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.prefab.PrefabStore;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.util.NotificationUtil;
 import willchil.mcp.http.JsonRpc;
 import willchil.mcp.mcp.McpCaller;
 import willchil.mcp.mcp.McpServices;
@@ -14,6 +18,9 @@ import java.nio.file.Path;
 
 /** Copies a staged build into the server's prefabs directory, where players can see it. */
 public final class PublishPrefabTool implements McpTool {
+
+    /** The game's own prefab tool icon, as a {@code Common/}-relative path. */
+    private static final String PREFAB_ICON = "Icons/Items/EditorTools/Prefab.png";
 
     private final McpServices services;
 
@@ -68,7 +75,29 @@ public final class PublishPrefabTool implements McpTool {
             return ToolResult.failure("Publish failed unexpectedly: " + message);
         }
 
+        notifyPublished(caller, PrefabWriter.cleanName(name));
+
         return ToolResult.text("Published " + PrefabWriter.cleanName(name) + " to prefabs/"
             + PrefabStore.get().getServerPrefabsPath().relativize(written).toString().replace('\\', '/'));
+    }
+
+    /**
+     * Tells the player who asked for the build that it is ready, if they are in game to see it.
+     *
+     * <p>Only an identified caller has a player to tell, which means only on a server that requires
+     * personal tokens. A player who is offline is simply not told: the prefab is published either way.
+     */
+    private static void notifyPublished(McpCaller caller, String prefabName) {
+        if (!caller.isIdentified()) return;
+        try {
+            Universe universe = Universe.get();
+            if (universe == null) return;
+            PlayerRef player = universe.getPlayer(caller.player());
+            if (player == null) return;
+            NotificationUtil.sendNotification(player.getPacketHandler(),
+                Message.raw("Prefab '" + prefabName + "' is now available"), PREFAB_ICON);
+        } catch (RuntimeException | LinkageError e) {
+            // A notification is a courtesy; failing to send one must not fail a publish that worked.
+        }
     }
 }
