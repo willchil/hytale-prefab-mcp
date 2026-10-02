@@ -96,7 +96,8 @@ public final class McpProtocol {
             "Author Hytale prefabs. Start with search_blocks to find real block names on this server, "
                 + "check a material with get_block_information, build with build_prefab, look at the "
                 + "result with render_prefab and iterate, then publish_prefab once it is finished. Builds are "
-                + "staged privately and players only see what you publish.");
+                + "staged privately and players only see what you publish. To reuse an existing prefab, find it "
+                + "with search_prefabs and paste it with prefab() in a build script.");
         return result;
     }
 

@@ -24,6 +24,7 @@ publish it once it is finished.
 | `build_prefab` | Runs your JavaScript, writes `<name>.prefab.json` to a private [staging area](#where-prefabs-are-created) |
 | `render_prefab` | PNG from any camera angle, so the agent can see what it built |
 | `publish_prefab` | Copies a staged prefab into `prefabs/prefab-mcp/`, where players can find it |
+| `search_prefabs` | Lists existing prefabs by name or path, a page at a time, with each one's size and block count, so they can be rendered or pasted with `prefab()` |
 
 ## Build and install
 

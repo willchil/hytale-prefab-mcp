@@ -8,6 +8,7 @@ import willchil.mcp.script.ScriptError;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,9 +16,11 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -120,19 +123,34 @@ public final class PrefabLocation {
      * every time. A directory that cannot be read is skipped rather than failing the whole search.
      */
     public static List<Path> findInTree(Path root, String cleanedName) {
-        if (!Files.isDirectory(root)) return List.of();
         String wanted = cleanedName.toLowerCase(Locale.ROOT);
+        return collect(root, Integer.MAX_VALUE, wanted::equals);
+    }
+
+    /**
+     * Every prefab under {@code root}, in the same form as {@link #findInTree}.
+     *
+     * @param recursive false for only the prefabs directly in {@code root}, as for a staging or
+     *     published directory that other callers' folders sit inside
+     */
+    public static List<Path> listInTree(Path root, boolean recursive) {
+        return collect(root, recursive ? Integer.MAX_VALUE : 1, base -> true);
+    }
+
+    /** @param accept tested against each prefab's lower-case name without its suffix */
+    private static List<Path> collect(Path root, int maxDepth, Predicate<String> accept) {
+        if (!Files.isDirectory(root)) return List.of();
         TreeSet<Path> found = new TreeSet<>();
         try {
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            Files.walkFileTree(root, EnumSet.noneOf(FileVisitOption.class), maxDepth, new SimpleFileVisitor<>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (!attrs.isRegularFile()) return FileVisitResult.CONTINUE;
                     String fileName = file.getFileName().toString();
                     String lower = fileName.toLowerCase(Locale.ROOT);
                     for (String suffix : PREFAB_SUFFIXES) {
-                        if (lower.equals(wanted + suffix)) {
-                            String base = fileName.substring(0, fileName.length() - suffix.length());
-                            found.add(file.resolveSibling(base));
+                        if (lower.endsWith(suffix) && accept.test(lower.substring(0, lower.length() - suffix.length()))) {
+                            found.add(file.resolveSibling(fileName.substring(0, fileName.length() - suffix.length())));
                         }
                     }
                     return FileVisitResult.CONTINUE;

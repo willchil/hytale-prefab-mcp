@@ -34,8 +34,13 @@ public final class PrefabLoader {
         return loadTarget(cleaned, PrefabWriter.resolveTarget(cleaned, directory));
     }
 
-    /** @param target the prefab's path without its suffix, as {@code PrefabStore} reads it */
-    private static BuildRecorder loadTarget(String cleaned, Path target) {
+    /**
+     * Loads the prefab at {@code target}.
+     *
+     * @param cleaned the name to report in errors
+     * @param target the prefab's path without its suffix, as {@code PrefabStore} reads it
+     */
+    public static BuildRecorder loadTarget(String cleaned, Path target) {
         BlockSelection selection;
         try {
             selection = PrefabStore.get().getPrefab(target);

@@ -85,7 +85,7 @@ public final class BuildPrefabTool implements McpTool {
             your staged builds first, then among the prefabs you have published, then anywhere in the \
             server's prefabs/ directory; if none has it the build fails. A name with folders in it, \
             such as "Trees/Oak_1", is a path inside prefabs/ and is looked up there alone; use one \
-            when a plain name matches more than one prefab. opts {yaw, pitch} turns the whole prefab about its anchor, with the same \
+            when a plain name matches more than one prefab; search_prefabs lists what exists. opts {yaw, pitch} turns the whole prefab about its anchor, with the same \
             degrees and directions as a block, and turns every block in it to match; if a block in it \
             has no rotation that matches, the call fails and names it. Pasted cells replace anything \
             already placed in the same cells; air is not copied. Use it to reuse a finished piece, such as a tower stamped at each \

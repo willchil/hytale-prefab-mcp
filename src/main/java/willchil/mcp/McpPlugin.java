@@ -23,6 +23,7 @@ import willchil.mcp.mcp.tools.GetBlockInformationTool;
 import willchil.mcp.mcp.tools.PublishPrefabTool;
 import willchil.mcp.mcp.tools.RenderPrefabTool;
 import willchil.mcp.mcp.tools.SearchBlocksTool;
+import willchil.mcp.mcp.tools.SearchPrefabsTool;
 import willchil.mcp.palette.BlockCatalog;
 import willchil.mcp.prefab.PrefabLocation;
 
@@ -65,7 +66,8 @@ public final class McpPlugin extends JavaPlugin {
             new GetBlockInformationTool(services),
             new BuildPrefabTool(services),
             new PublishPrefabTool(services),
-            new RenderPrefabTool(services));
+            new RenderPrefabTool(services),
+            new SearchPrefabsTool(services));
         // Read here rather than at boot: the command and the authenticator both need the secret,
         // and both are built while the plugin is being set up.
         this.config = McpConfig.loadOrCreate(getDataDirectory(), defaultPort(),

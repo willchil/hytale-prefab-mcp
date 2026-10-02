@@ -1,6 +1,7 @@
 package willchil.mcp;
 
 import willchil.mcp.mcp.McpCaller;
+import willchil.mcp.mcp.tools.SearchPrefabsTool;
 import willchil.mcp.prefab.PrefabLocation;
 import willchil.mcp.script.ScriptError;
 import org.junit.jupiter.api.Test;
@@ -160,6 +161,29 @@ class PrefabLocationTest {
     @Test
     void treeSearchOfAMissingDirectoryFindsNothing(@TempDir Path parent) {
         assertTrue(PrefabLocation.findInTree(parent.resolve("never-created"), "house").isEmpty());
+    }
+
+    @Test
+    void listingCoversEveryPrefabOrOnlyTheTopLevel(@TempDir Path root) throws Exception {
+        Files.createDirectories(root.resolve("willchil"));
+        Files.writeString(root.resolve("tower.prefab.json"), "{}");
+        Files.writeString(root.resolve("tower.lpf"), "");
+        Files.writeString(root.resolve("readme.txt"), "");
+        Files.writeString(root.resolve("willchil/house.prefab.json"), "{}");
+
+        assertEquals(List.of(root.resolve("tower"), root.resolve("willchil/house")),
+            PrefabLocation.listInTree(root, true));
+        // Another caller's folder inside this one is not part of it.
+        assertEquals(List.of(root.resolve("tower")), PrefabLocation.listInTree(root, false));
+    }
+
+    @Test
+    void aPrefabSearchNeedsEveryWordSomewhereInThePath() {
+        assertTrue(SearchPrefabsTool.matches("Trees/Oak/Oak_1", null));
+        assertTrue(SearchPrefabsTool.matches("Trees/Oak/Oak_1", "  "));
+        assertTrue(SearchPrefabsTool.matches("Trees/Oak/Oak_1", "oak TREES"));
+        assertTrue(SearchPrefabsTool.matches("prefab-mcp/willchil/wool_cube_3", "willchil cube"));
+        assertFalse(SearchPrefabsTool.matches("Trees/Oak/Oak_1", "oak birch"));
     }
 
     @Test

@@ -45,7 +45,7 @@ public final class RenderPrefabTool implements McpTool {
             wrong. The name is looked up among your staged builds first, then among the prefabs you \
             have published, then anywhere in the server's prefabs/ directory. A name with folders in \
             it, such as "Trees/Oak_1", is a path inside prefabs/ and is looked up there alone; use \
-            one when a plain name matches more than one prefab.
+            one when a plain name matches more than one prefab. search_prefabs lists what exists.
 
             The camera orbits the build: yaw turns around it, pitch raises the viewpoint, and the \
             distance is solved automatically to frame the whole thing unless you set one. Render a few \
