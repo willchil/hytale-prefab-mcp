@@ -105,7 +105,10 @@ public final class RenderPrefabTool implements McpTool {
                 }
             }
             cleaned = PrefabWriter.cleanName(requested);
-            recorder = load(cleaned, staging, caller);
+            recorder = PrefabLoader.find(cleaned, services, caller);
+            if (recorder == null) {
+                return ToolResult.failure("No staged or published prefab named \"" + cleaned + "\".");
+            }
         } catch (ScriptError e) {
             return ToolResult.failure(BuildPrefabTool.format(e));
         } catch (RuntimeException e) {
@@ -155,22 +158,6 @@ public final class RenderPrefabTool implements McpTool {
             + "\nbuild " + scene.sizeX() + " x " + scene.sizeY() + " x " + scene.sizeZ()
             + ", " + scene.cellCount() + " cells, rendered " + width + "x" + height + " in " + millis + "ms";
         return ToolResult.image(png, "image/png", caption);
-    }
-
-    /**
-     * A build from this session is already in memory; anything else is read back from disk, from
-     * staging first and then from the published folder, so prefabs made earlier or by the in-game
-     * editor can be inspected too.
-     */
-    private BuildRecorder load(String cleaned, Path staging, McpCaller caller) {
-        BuildRecorder cached = services.recentBuild(staging.toString(), cleaned);
-        if (cached != null) return cached;
-        if (PrefabLoader.exists(cleaned, staging)) return PrefabLoader.load(cleaned, staging);
-
-        Path published = PrefabLocation.publishedDirectory(caller);
-        if (PrefabLoader.exists(cleaned, published)) return PrefabLoader.load(cleaned, published);
-        throw new ScriptError(ScriptError.Phase.VALIDATE,
-            "No staged or published prefab named \"" + cleaned + "\".");
     }
 
     private static double[] parseTarget(JsonObject arguments, VoxelScene scene) {

@@ -11,6 +11,7 @@ import org.graalvm.polyglot.proxy.ProxyExecutable;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -40,15 +41,23 @@ public final class BuildApi {
 
     private final BlockCatalog catalog;
     private final BuildRecorder recorder;
+    private final PrefabLookup prefabs;
     private final XorShiftRandom random;
+
+    /**
+     * Prefabs already found this run, by lower-cased name, so pasting one in a loop reads it once.
+     * Misses are not kept: a miss ends the run anyway.
+     */
+    private final Map<String, BuildRecorder> pastedPrefabs = new HashMap<>();
 
     /** Names that resolved to nothing, counted so every typo can be reported at once at the end. */
     private final Map<String, Integer> unknownNames = new LinkedHashMap<>();
     private final List<String> log = new ArrayList<>();
 
-    public BuildApi(BlockCatalog catalog, BuildRecorder recorder, long seed) {
+    public BuildApi(BlockCatalog catalog, BuildRecorder recorder, PrefabLookup prefabs, long seed) {
         this.catalog = catalog;
         this.recorder = recorder;
+        this.prefabs = prefabs;
         this.random = new XorShiftRandom(seed);
     }
 
@@ -134,6 +143,13 @@ public final class BuildApi {
                 optIndex = 7;
             }
             drawCylinder(ccx, ccy, ccz, r, h, name, axis, opts(a, optIndex));
+            return null;
+        });
+
+        bindings.putMember("prefab", (ProxyExecutable) a -> {
+            require(a, 4, "prefab(name, x, y, z)");
+            pastePrefab(toName(a[0], "prefab", "prefab"), toInt(a[1], "prefab", "x"),
+                toInt(a[2], "prefab", "y"), toInt(a[3], "prefab", "z"));
             return null;
         });
 
@@ -355,6 +371,41 @@ public final class BuildApi {
         }
     }
 
+    /**
+     * Copies an existing prefab into the build so that its anchor lands on {@code (x, y, z)}, the way
+     * Hytale itself pastes one: every cell goes to its offset from the anchor, added to the target.
+     *
+     * <p>Cells are copied as stored, keeping each block's rotation, and replace whatever the script
+     * already put there. Air and filler are not copied: the loader drops both, so the paste overlays
+     * the build the same way a published prefab overlays terrain, and fillers are regenerated on save.
+     */
+    private void pastePrefab(String name, int x, int y, int z) {
+        String key = name.toLowerCase(Locale.ROOT);
+        BuildRecorder source = pastedPrefabs.get(key);
+        if (source == null) {
+            source = prefabs.find(name);
+            if (source == null) {
+                throw new ScriptError(ScriptError.Phase.RUNTIME,
+                    "prefab() found no prefab named \"" + name + "\". It looks among your staged builds "
+                        + "first, then among the prefabs you have published.");
+            }
+            pastedPrefabs.put(key, source);
+        }
+        recorder.checkExpansion((long) source.blockCount() + source.fluidCount(), "prefab()");
+
+        int dx = x - source.anchorX(), dy = y - source.anchorY(), dz = z - source.anchorZ();
+        for (var e : source.blocks().entrySet()) {
+            long k = e.getKey();
+            recorder.putBlock(BuildRecorder.unpackX(k) + dx, BuildRecorder.unpackY(k) + dy,
+                BuildRecorder.unpackZ(k) + dz, e.getValue().name(), e.getValue().rotation());
+        }
+        for (var e : source.fluids().entrySet()) {
+            long k = e.getKey();
+            recorder.putFluid(BuildRecorder.unpackX(k) + dx, BuildRecorder.unpackY(k) + dy,
+                BuildRecorder.unpackZ(k) + dz, e.getValue().name(), e.getValue().level());
+        }
+    }
+
     private enum Axis { X, Y, Z }
 
     /**
@@ -477,12 +528,17 @@ public final class BuildApi {
     }
 
     private static String toName(@Nullable Value value, String fn) {
+        return toName(value, fn, "block");
+    }
+
+    /** @param kind what the name refers to, for the error message: "block" or "prefab" */
+    private static String toName(@Nullable Value value, String fn, String kind) {
         if (value == null || value.isNull()) {
-            throw new ScriptError(ScriptError.Phase.RUNTIME, fn + "() got no block name.");
+            throw new ScriptError(ScriptError.Phase.RUNTIME, fn + "() got no " + kind + " name.");
         }
         String s = asText(value).trim();
         if (s.isEmpty()) {
-            throw new ScriptError(ScriptError.Phase.RUNTIME, fn + "() got an empty block name.");
+            throw new ScriptError(ScriptError.Phase.RUNTIME, fn + "() got an empty " + kind + " name.");
         }
         return s;
     }

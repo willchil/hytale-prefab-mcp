@@ -83,16 +83,23 @@ public final class ScriptRunner {
     }
 
     private final BlockCatalog catalog;
+    private final PrefabLookup prefabs;
 
+    /** A runner whose scripts have no existing prefabs to paste in. */
     public ScriptRunner(BlockCatalog catalog) {
+        this(catalog, PrefabLookup.NONE);
+    }
+
+    public ScriptRunner(BlockCatalog catalog, PrefabLookup prefabs) {
         this.catalog = catalog;
+        this.prefabs = prefabs;
     }
 
     public Result run(String code, Options options) {
         rejectTypeScript(code);
 
         BuildRecorder recorder = new BuildRecorder(options.maxCells());
-        BuildApi api = new BuildApi(catalog, recorder, options.seed());
+        BuildApi api = new BuildApi(catalog, recorder, prefabs, options.seed());
 
         Context context = Context.newBuilder("js")
             .engine(EngineHolder.INSTANCE)
@@ -134,8 +141,8 @@ public final class ScriptRunner {
 
         if (recorder.isEmpty()) {
             throw new ScriptError(ScriptError.Phase.VALIDATE,
-                "The script placed no blocks. Call block(), box(), line(), sphere(), cylinder() or "
-                    + "ellipsoid() to place something.");
+                "The script placed no blocks. Call block(), box(), line(), sphere(), cylinder(), "
+                    + "ellipsoid() or prefab() to place something.");
         }
         FootprintCheck.verify(recorder, catalog);
         return new Result(recorder, api.log());

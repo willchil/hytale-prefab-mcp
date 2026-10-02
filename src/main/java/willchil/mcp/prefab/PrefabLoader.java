@@ -6,9 +6,12 @@ import com.hypixel.hytale.server.core.asset.type.fluid.Fluid;
 import com.hypixel.hytale.server.core.prefab.PrefabStore;
 import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
 import com.hypixel.hytale.server.core.util.FillerBlockUtil;
+import willchil.mcp.mcp.McpCaller;
+import willchil.mcp.mcp.McpServices;
 import willchil.mcp.script.BuildRecorder;
 import willchil.mcp.script.ScriptError;
 
+import javax.annotation.Nullable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -48,6 +51,26 @@ public final class PrefabLoader {
                 "No prefab named \"" + cleaned + "\".");
         }
         return toRecorder(selection);
+    }
+
+    /**
+     * Finds a prefab the caller can reach by name, or returns null when there is none.
+     *
+     * <p>A build from this session is already in memory; anything else is read back from disk, from
+     * staging first and then from the published folder, so prefabs made earlier or by the in-game
+     * editor can be used too. Only the caller's own directories are searched.
+     */
+    @Nullable
+    public static BuildRecorder find(String name, McpServices services, McpCaller caller) {
+        String cleaned = PrefabWriter.cleanName(name);
+        Path staging = PrefabLocation.stagingDirectory(services.stagingRoot(), caller);
+        BuildRecorder cached = services.recentBuild(staging.toString(), cleaned);
+        if (cached != null) return cached;
+        if (exists(cleaned, staging)) return load(cleaned, staging);
+
+        Path published = PrefabLocation.publishedDirectory(caller);
+        if (exists(cleaned, published)) return load(cleaned, published);
+        return null;
     }
 
     /** Whether a prefab of that name is on disk in {@code directory}. */

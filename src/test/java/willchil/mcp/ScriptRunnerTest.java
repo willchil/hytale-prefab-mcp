@@ -435,4 +435,40 @@ class ScriptRunnerTest {
             """);
         assertEquals(13, recorder.blockCount());
     }
+
+    // ------------------------------------------------------------------ pasting prefabs
+
+    @Test
+    void prefabIsPastedByItsAnchor() {
+        BuildRecorder tower = run("""
+            setAnchor(1, 0, 1);
+            block(1, 0, 1, 'Rock_Stone');
+            block(2, 3, 1, 'Wood_Hardwood_Planks');
+            block(1, 1, 1, 'Water_Source');
+            """);
+        ScriptRunner withTower = new ScriptRunner(TestPalette.catalog(),
+            name -> name.equalsIgnoreCase("tower") ? tower : null);
+
+        BuildRecorder recorder = withTower.run("""
+            block(10, 0, 10, 'Wood_Hardwood_Planks');
+            prefab('tower', 10, 0, 10);
+            prefab('Tower', -5, 2, 0);
+            """, FAST).recorder();
+
+        // The anchor cell lands on the target, replacing what was there; the rest keeps its offset.
+        assertEquals("Rock_Stone", recorder.blockAt(10, 0, 10).name());
+        assertEquals("Wood_Hardwood_Planks", recorder.blockAt(11, 3, 10).name());
+        assertEquals("Water_Source", recorder.fluidAt(10, 1, 10).name());
+        assertEquals("Rock_Stone", recorder.blockAt(-5, 2, 0).name());
+        assertEquals("Wood_Hardwood_Planks", recorder.blockAt(-4, 5, 0).name());
+        assertEquals(4, recorder.blockCount());
+    }
+
+    @Test
+    void missingPrefabFailsWithItsName() {
+        ScriptError e = failure("block(0, 0, 0, 'Rock_Stone');\nprefab('nowhere', 0, 0, 0);");
+        assertEquals(ScriptError.Phase.RUNTIME, e.phase());
+        assertTrue(e.getMessage().contains("nowhere"), e.getMessage());
+        assertEquals(2, e.line());
+    }
 }

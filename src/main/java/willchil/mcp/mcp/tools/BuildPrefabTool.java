@@ -6,6 +6,7 @@ import willchil.mcp.mcp.McpCaller;
 import willchil.mcp.mcp.McpServices;
 import willchil.mcp.mcp.McpTool;
 import willchil.mcp.palette.BlockCatalog;
+import willchil.mcp.prefab.PrefabLoader;
 import willchil.mcp.prefab.PrefabLocation;
 import willchil.mcp.prefab.PrefabWriter;
 import willchil.mcp.script.ScriptError;
@@ -54,6 +55,7 @@ public final class BuildPrefabTool implements McpTool {
               sphere(cx, cy, cz, r, name [, opts])
               ellipsoid(cx, cy, cz, rx, ry, rz, name [, opts])
               cylinder(cx, cy, cz, r, h, name [, axis] [, opts])   axis is "x", "y" (default) or "z"
+              prefab(name, x, y, z)                             paste an existing prefab, anchor at x, y, z
 
             FLUIDS: there is no separate fluid call. Pass a fluid name to any of the above and it goes \
             into the prefab's fluid layer, so box(...,"Water_Source") fills a lake. Blocks and fluids \
@@ -77,6 +79,13 @@ public final class BuildPrefabTool implements McpTool {
             get_block_information shows which neighbouring cells a block fills at each yaw. Those cells are \
             written as filler and must be left empty; a build that puts anything else there fails and \
             names the cells. Fluids may share them.
+
+            PREFABS: prefab(name, x, y, z) copies an existing prefab into this build so that its \
+            anchor lands at x, y, z, exactly as pasting it in game would. The name is looked up among \
+            your staged builds first, then among the prefabs you have published; if neither has it the \
+            build fails. Blocks keep their rotation and replace anything already placed in the same \
+            cells; air is not copied. Use it to reuse a finished piece, such as a tower stamped at each \
+            corner of a wall.
 
             QUERY AND EDIT
               blockAt(x, y, z) / fluidAt(x, y, z)   name placed there, or null
@@ -134,7 +143,7 @@ public final class BuildPrefabTool implements McpTool {
             (long) JsonRpc.intOr(arguments, "timeoutMs", (int) DEFAULT_TIMEOUT_MS), MAX_TIMEOUT_MS));
         long seed = JsonRpc.intOr(arguments, "seed", 0);
 
-        ScriptRunner runner = new ScriptRunner(catalog);
+        ScriptRunner runner = new ScriptRunner(catalog, prefab -> PrefabLoader.find(prefab, services, caller));
         ScriptRunner.Result result;
         try {
             result = runner.run(code, new ScriptRunner.Options(timeout, PrefabWriter.JSON_BLOCK_LIMIT, seed));
