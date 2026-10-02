@@ -43,7 +43,9 @@ public final class RenderPrefabTool implements McpTool {
         return """
             Render a prefab to an image so you can see what you actually built and fix what looks \
             wrong. The name is looked up among your staged builds first, then among the prefabs you \
-            have published.
+            have published, then anywhere in the server's prefabs/ directory. A name with folders in \
+            it, such as "Trees/Oak_1", is a path inside prefabs/ and is looked up there alone; use \
+            one when a plain name matches more than one prefab.
 
             The camera orbits the build: yaw turns around it, pitch raises the viewpoint, and the \
             distance is solved automatically to frame the whole thing unless you set one. Render a few \
@@ -105,9 +107,11 @@ public final class RenderPrefabTool implements McpTool {
                 }
             }
             cleaned = PrefabWriter.cleanName(requested);
-            recorder = PrefabLoader.find(cleaned, services, caller);
+            // The raw name, since cleaning drops any folders that say where under prefabs/ to look.
+            recorder = PrefabLoader.find(requested, services, caller);
             if (recorder == null) {
-                return ToolResult.failure("No staged or published prefab named \"" + cleaned + "\".");
+                return ToolResult.failure("No prefab named \"" + requested.trim() + "\" in your staged builds, "
+                    + "your published prefabs or anywhere under prefabs/.");
             }
         } catch (ScriptError e) {
             return ToolResult.failure(BuildPrefabTool.format(e));

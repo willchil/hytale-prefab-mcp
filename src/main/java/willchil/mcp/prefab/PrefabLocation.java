@@ -8,10 +8,16 @@ import willchil.mcp.script.ScriptError;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
@@ -34,6 +40,9 @@ public final class PrefabLocation {
      * between sessions, so this is the ordinary case for an agent running while nobody is logged in.
      */
     public static final String OFFLINE = "offline-players";
+
+    /** The suffixes {@code PrefabStore} saves under, lower case. */
+    private static final String[] PREFAB_SUFFIXES = {".prefab.json", ".lpf"};
 
     private PrefabLocation() {
     }
@@ -100,6 +109,74 @@ public final class PrefabLocation {
         } catch (IOException | RuntimeException e) {
             onProblem.report("Could not clear the prefab staging area " + stagingRoot + ": " + e);
         }
+    }
+
+    /**
+     * Every prefab anywhere under {@code root} whose file name matches {@code cleanedName}, ignoring
+     * case and format.
+     *
+     * <p>Each result is the path without its suffix, the form {@code PrefabStore} reads, and a prefab
+     * saved in both formats is listed once. Sorted, so an ambiguous name is reported the same way
+     * every time. A directory that cannot be read is skipped rather than failing the whole search.
+     */
+    public static List<Path> findInTree(Path root, String cleanedName) {
+        if (!Files.isDirectory(root)) return List.of();
+        String wanted = cleanedName.toLowerCase(Locale.ROOT);
+        TreeSet<Path> found = new TreeSet<>();
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    String fileName = file.getFileName().toString();
+                    String lower = fileName.toLowerCase(Locale.ROOT);
+                    for (String suffix : PREFAB_SUFFIXES) {
+                        if (lower.equals(wanted + suffix)) {
+                            String base = fileName.substring(0, fileName.length() - suffix.length());
+                            found.add(file.resolveSibling(base));
+                        }
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException e) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            // The visitor swallows per-file failures, so this is the root itself becoming unreadable.
+            return List.of();
+        }
+        return new ArrayList<>(found);
+    }
+
+    /**
+     * Resolves a name that carries its own folders, such as {@code Trees/Oak_1}, against {@code root}.
+     * The last segment is cleaned like any prefab name, so a suffix may be given or left off.
+     *
+     * @throws ScriptError when the path would leave {@code root}
+     */
+    public static Path resolveNested(Path root, String raw) {
+        String path = raw.trim().replace('\\', '/');
+        while (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        int slash = path.lastIndexOf('/');
+        String folders = slash < 0 ? "" : path.substring(0, slash);
+        String relative = folders.isEmpty()
+            ? PrefabWriter.cleanName(path)
+            : folders + "/" + PrefabWriter.cleanName(path);
+        Path resolved = PathUtil.resolvePathWithinDir(root, relative);
+        if (resolved == null) {
+            throw new ScriptError(ScriptError.Phase.VALIDATE,
+                "Prefab path \"" + raw + "\" escapes the prefabs directory.");
+        }
+        return resolved;
+    }
+
+    /** Whether a requested name carries a folder, and so names one place rather than asking for a search. */
+    public static boolean hasFolder(String raw) {
+        String path = raw.trim().replace('\\', '/');
+        while (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        return path.indexOf('/') >= 0;
     }
 
     private static Path within(Path base, String relative) {

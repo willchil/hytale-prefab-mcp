@@ -149,6 +149,13 @@ Both locations are split by caller in the same way:
 `build_prefab` and `publish_prefab` each take `overwrite`, which replaces an existing prefab of the
 same name in staging or in the published folder respectively.
 
+`render_prefab` and the script's `prefab()` find a prefab by name in the caller's own staging, then
+the caller's own published folder, then anywhere under the server's `prefabs/` directory, so prefabs
+from other players, the in-game editor or an operator can be rendered and pasted too. A name with
+folders in it, such as `Trees/Oak_1`, is a path inside `prefabs/` and is looked up there alone; a
+plain name that matches more than one prefab fails and lists the paths to choose from. Staging stays
+private: one caller can never reach another's unpublished builds.
+
 ### Permission
 
 `/prefab-mcp` and every MCP request require `willchil.prefabmcp.command`. The node is logged at
@@ -199,7 +206,7 @@ line(x1, y1, z1, x2, y2, z2, name [, opts])
 sphere(cx, cy, cz, r, name [, opts])
 ellipsoid(cx, cy, cz, rx, ry, rz, name [, opts])
 cylinder(cx, cy, cz, r, h, name [, axis] [, opts])  axis "x" | "y" (default) | "z"
-prefab(name, x, y, z [, opts])                      paste a staged or published prefab, anchor at x, y, z
+prefab(name, x, y, z [, opts])                      paste a prefab by name or prefabs/ path, anchor at x, y, z
 
 blockAt(x, y, z) / fluidAt(x, y, z)                 name placed there, or null
 clear(x, y, z)                                      remove from both layers

@@ -14,6 +14,7 @@ import willchil.mcp.script.ScriptError;
 import javax.annotation.Nullable;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Reads a saved prefab back into the same in-memory form a freshly run script produces, so the
@@ -21,19 +22,20 @@ import java.nio.file.Path;
  */
 public final class PrefabLoader {
 
+    /** How many candidates an ambiguous name lists before summarising the rest. */
+    private static final int MAX_LISTED = 10;
+
     private PrefabLoader() {
     }
 
-    /**
-     * Loads a prefab by name from one of the caller's own directories.
-     *
-     * <p>Looks only where that caller writes, so one player's render cannot reach into another's
-     * prefabs just by guessing a name.
-     */
+    /** Loads a prefab by name from {@code directory}. */
     public static BuildRecorder load(String name, Path directory) {
         String cleaned = PrefabWriter.cleanName(name);
-        Path target = PrefabWriter.resolveTarget(cleaned, directory);
+        return loadTarget(cleaned, PrefabWriter.resolveTarget(cleaned, directory));
+    }
 
+    /** @param target the prefab's path without its suffix, as {@code PrefabStore} reads it */
+    private static BuildRecorder loadTarget(String cleaned, Path target) {
         BlockSelection selection;
         try {
             selection = PrefabStore.get().getPrefab(target);
@@ -56,13 +58,23 @@ public final class PrefabLoader {
     /**
      * Finds a prefab the caller can reach by name, or returns null when there is none.
      *
-     * <p>A build from this session is already in memory; anything else is read back from disk, from
-     * staging first and then from the published folder, so prefabs made earlier or by the in-game
-     * editor can be used too. Only the caller's own directories are searched.
+     * <p>A name with folders in it, such as {@code Trees/Oak_1}, is a path inside the server's
+     * {@code prefabs/} directory and is looked up there alone. A plain name is looked for in the
+     * caller's own staging (a build from this session is already in memory), then the caller's own
+     * published folder, then anywhere under {@code prefabs/}, so prefabs from other players, the
+     * in-game editor or an operator can be used too. Staging stays private to its caller.
+     *
+     * @throws ScriptError when a plain name matches more than one prefab under {@code prefabs/}
      */
     @Nullable
     public static BuildRecorder find(String name, McpServices services, McpCaller caller) {
         String cleaned = PrefabWriter.cleanName(name);
+        Path prefabsRoot = PrefabStore.get().getServerPrefabsPath();
+        if (PrefabLocation.hasFolder(name)) {
+            Path target = PrefabLocation.resolveNested(prefabsRoot, name);
+            return exists(target) ? loadTarget(cleaned, target) : null;
+        }
+
         Path staging = PrefabLocation.stagingDirectory(services.stagingRoot(), caller);
         BuildRecorder cached = services.recentBuild(staging.toString(), cleaned);
         if (cached != null) return cached;
@@ -70,7 +82,22 @@ public final class PrefabLoader {
 
         Path published = PrefabLocation.publishedDirectory(caller);
         if (exists(cleaned, published)) return load(cleaned, published);
-        return null;
+
+        List<Path> matches = PrefabLocation.findInTree(prefabsRoot, cleaned);
+        if (matches.isEmpty()) return null;
+        if (matches.size() == 1) return loadTarget(cleaned, matches.get(0));
+
+        StringBuilder out = new StringBuilder("More than one prefab is named \"" + cleaned
+            + "\". Pass its path inside prefabs/ instead, one of:");
+        int shown = 0;
+        for (Path match : matches) {
+            if (shown++ == MAX_LISTED) {
+                out.append("\n  ... and ").append(matches.size() - MAX_LISTED).append(" more");
+                break;
+            }
+            out.append("\n  ").append(prefabsRoot.relativize(match).toString().replace('\\', '/'));
+        }
+        throw new ScriptError(ScriptError.Phase.VALIDATE, out.toString());
     }
 
     /** Whether a prefab of that name is on disk in {@code directory}. */
