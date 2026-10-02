@@ -177,6 +177,8 @@ public final class PrefabLocation {
     public static Path resolveNested(Path root, String raw) {
         String path = raw.trim().replace('\\', '/');
         while (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        // A leading slash means the top of the root, as in "/Oak_1", not the filesystem's root.
+        while (path.startsWith("/")) path = path.substring(1);
         int slash = path.lastIndexOf('/');
         String folders = slash < 0 ? "" : path.substring(0, slash);
         String relative = folders.isEmpty()

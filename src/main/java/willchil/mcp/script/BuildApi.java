@@ -395,7 +395,7 @@ public final class BuildApi {
             if (source == null) {
                 throw new ScriptError(ScriptError.Phase.RUNTIME,
                     "prefab() found no prefab named \"" + name + "\". It looks among your staged builds "
-                        + "first, then among the prefabs you have published, then anywhere under prefabs/.");
+                        + "first, then among the prefabs you have published, then in prefabs/ and the asset packs.");
             }
             pastedPrefabs.put(key, source);
         }

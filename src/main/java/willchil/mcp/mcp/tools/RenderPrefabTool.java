@@ -43,9 +43,10 @@ public final class RenderPrefabTool implements McpTool {
         return """
             Render a prefab to an image so you can see what you actually built and fix what looks \
             wrong. The name is looked up among your staged builds first, then among the prefabs you \
-            have published, then anywhere in the server's prefabs/ directory. A name with folders in \
-            it, such as "Trees/Oak_1", is a path inside prefabs/ and is looked up there alone; use \
-            one when a plain name matches more than one prefab. search_prefabs lists what exists.
+            have published, then anywhere in the server's prefabs/ directory, the vanilla asset pack \
+            and plugin asset packs, in that order. A name with a slash, such as "Trees/Oak_1", \
+            "/Oak_1" or "@<pack>/Trees/Oak_1", is a path and is looked up as one; use one when a \
+            plain name matches more than one prefab. search_prefabs lists what exists, by these names.
 
             The camera orbits the build: yaw turns around it, pitch raises the viewpoint, and the \
             distance is solved automatically to frame the whole thing unless you set one. Render a few \
@@ -111,7 +112,7 @@ public final class RenderPrefabTool implements McpTool {
             recorder = PrefabLoader.find(requested, services, caller);
             if (recorder == null) {
                 return ToolResult.failure("No prefab named \"" + requested.trim() + "\" in your staged builds, "
-                    + "your published prefabs or anywhere under prefabs/.");
+                    + "your published prefabs, prefabs/ or any asset pack.");
             }
         } catch (ScriptError e) {
             return ToolResult.failure(BuildPrefabTool.format(e));

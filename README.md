@@ -150,12 +150,22 @@ Both locations are split by caller in the same way:
 `build_prefab` and `publish_prefab` each take `overwrite`, which replaces an existing prefab of the
 same name in staging or in the published folder respectively.
 
-`render_prefab` and the script's `prefab()` find a prefab by name in the caller's own staging, then
-the caller's own published folder, then anywhere under the server's `prefabs/` directory, so prefabs
-from other players, the in-game editor or an operator can be rendered and pasted too. A name with
-folders in it, such as `Trees/Oak_1`, is a path inside `prefabs/` and is looked up there alone; a
-plain name that matches more than one prefab fails and lists the paths to choose from. Staging stays
-private: one caller can never reach another's unpublished builds.
+`render_prefab`, `search_prefabs` and the script's `prefab()` see the same prefabs a player can load
+in game. A plain name is looked for in this order:
+
+1. the caller's own staging
+2. the caller's own published folder
+3. anywhere under the server's `prefabs/` directory, so prefabs from other players, the in-game
+   editor or an operator are included
+4. the vanilla Hytale asset pack's `Server/Prefabs`
+5. every other loaded asset pack's `Server/Prefabs`, in the order the server loaded them
+
+A name with a slash is a path inside one of those prefab folders: `Trees/Oak_1`, or `/Oak_1` for a
+prefab at the top of one. It resolves in the first folder that has it. When an earlier folder hides
+a prefab at the same path, `@<pack>/Trees/Oak_1` reaches it in that pack, and `search_prefabs` lists
+it that way. A plain name that matches more than one prefab in the first place that has it fails and
+lists the paths to choose from. Staging stays private: one caller can never reach another's
+unpublished builds.
 
 ### Permission
 

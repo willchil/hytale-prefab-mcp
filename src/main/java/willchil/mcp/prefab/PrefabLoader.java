@@ -63,21 +63,22 @@ public final class PrefabLoader {
     /**
      * Finds a prefab the caller can reach by name, or returns null when there is none.
      *
-     * <p>A name with folders in it, such as {@code Trees/Oak_1}, is a path inside the server's
-     * {@code prefabs/} directory and is looked up there alone. A plain name is looked for in the
-     * caller's own staging (a build from this session is already in memory), then the caller's own
-     * published folder, then anywhere under {@code prefabs/}, so prefabs from other players, the
-     * in-game editor or an operator can be used too. Staging stays private to its caller.
+     * <p>A plain name is looked for in the caller's own staging (a build from this session is already
+     * in memory), then the caller's own published folder, then by file name through
+     * {@link PrefabRoots}: the server's {@code prefabs/} directory, the vanilla asset pack, then every
+     * other loaded pack. A name that is a path, such as {@code Trees/Oak_1} or
+     * {@code @<pack>/Trees/Oak_1}, is resolved through {@link PrefabRoots#resolve} alone. Staging stays
+     * private to its caller.
      *
-     * @throws ScriptError when a plain name matches more than one prefab under {@code prefabs/}
+     * @throws ScriptError when a plain name matches more than one prefab in the first root that has it
      */
     @Nullable
     public static BuildRecorder find(String name, McpServices services, McpCaller caller) {
         String cleaned = PrefabWriter.cleanName(name);
-        Path prefabsRoot = PrefabStore.get().getServerPrefabsPath();
-        if (PrefabLocation.hasFolder(name)) {
-            Path target = PrefabLocation.resolveNested(prefabsRoot, name);
-            return exists(target) ? loadTarget(cleaned, target) : null;
+        List<PrefabRoots.Root> roots = PrefabRoots.current();
+        if (PrefabRoots.isPath(name)) {
+            Path target = PrefabRoots.resolve(roots, name);
+            return target == null ? null : loadTarget(cleaned, target);
         }
 
         Path staging = PrefabLocation.stagingDirectory(services.stagingRoot(), caller);
@@ -88,19 +89,19 @@ public final class PrefabLoader {
         Path published = PrefabLocation.publishedDirectory(caller);
         if (exists(cleaned, published)) return load(cleaned, published);
 
-        List<Path> matches = PrefabLocation.findInTree(prefabsRoot, cleaned);
+        List<PrefabRoots.Found> matches = PrefabRoots.findByName(roots, cleaned);
         if (matches.isEmpty()) return null;
-        if (matches.size() == 1) return loadTarget(cleaned, matches.get(0));
+        if (matches.size() == 1) return loadTarget(cleaned, matches.get(0).target());
 
         StringBuilder out = new StringBuilder("More than one prefab is named \"" + cleaned
-            + "\". Pass its path inside prefabs/ instead, one of:");
+            + "\". Pass its path instead, one of:");
         int shown = 0;
-        for (Path match : matches) {
+        for (PrefabRoots.Found match : matches) {
             if (shown++ == MAX_LISTED) {
                 out.append("\n  ... and ").append(matches.size() - MAX_LISTED).append(" more");
                 break;
             }
-            out.append("\n  ").append(prefabsRoot.relativize(match).toString().replace('\\', '/'));
+            out.append("\n  ").append(match.name());
         }
         throw new ScriptError(ScriptError.Phase.VALIDATE, out.toString());
     }

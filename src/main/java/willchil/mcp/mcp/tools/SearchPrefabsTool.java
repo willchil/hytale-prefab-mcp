@@ -2,17 +2,16 @@ package willchil.mcp.mcp.tools;
 
 import com.google.gson.JsonObject;
 import com.hypixel.hytale.common.util.PathUtil;
-import com.hypixel.hytale.server.core.prefab.PrefabStore;
 import willchil.mcp.http.JsonRpc;
 import willchil.mcp.mcp.McpCaller;
 import willchil.mcp.mcp.McpServices;
 import willchil.mcp.mcp.McpTool;
 import willchil.mcp.prefab.PrefabLoader;
 import willchil.mcp.prefab.PrefabLocation;
+import willchil.mcp.prefab.PrefabRoots;
 import willchil.mcp.script.BuildRecorder;
 
 import javax.annotation.Nullable;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,17 +40,21 @@ public final class SearchPrefabsTool implements McpTool {
             Search the prefabs you can render with render_prefab or paste with prefab() in a \
             build_prefab script. Returns each prefab's name, its size and how many blocks it holds.
 
-            The name column is exactly what render_prefab and prefab() accept: a plain name for one \
-            of your own staged builds, otherwise its path inside the server's prefabs/ directory, \
-            such as "Trees/Oak_1". Your staged builds come first, then the rest sorted by path, so \
-            prefabs in the same folder sit together. The order is stable, so when a search hits its \
-            limit, pass offset to page through the rest.
+            Prefabs come from four places, searched and listed in this order: your own staged \
+            builds, the server's prefabs/ directory (including prefabs from other players, the in-game \
+            editor and operators), the vanilla Hytale asset pack, then asset packs added by plugins.
 
-            scope "all" (the default) searches your staged builds and the whole prefabs/ directory, \
-            including prefabs from other players, the in-game editor and operators. "mine" searches \
-            only your staged builds and the prefabs you have published. Any other value is a folder \
-            inside prefabs/, searched with everything beneath it. Leave query out to list everything \
-            in scope.""";
+            The name column is exactly what render_prefab and prefab() accept: a plain name for one \
+            of your own staged builds, otherwise the prefab's path inside its folder, such as \
+            "Trees/Oak_1", or "/Oak_1" for one at the top. When an earlier place has a prefab at the \
+            same path, the later one is named "@<pack>/Trees/Oak_1" so it can still be reached. \
+            Within each place results are sorted by path, so prefabs in the same folder sit together. \
+            The order is stable, so when a search hits its limit, pass offset to page through the rest.
+
+            scope "all" (the default) searches everywhere. "mine" searches only your staged builds \
+            and the prefabs you have published. Any other value is a folder, such as "Trees", \
+            searched with everything beneath it in prefabs/ and in every asset pack. Leave query out \
+            to list everything in scope.""";
     }
 
     @Override
@@ -61,7 +64,7 @@ public final class SearchPrefabsTool implements McpTool {
             "Text matched against the prefab's path, case-insensitive. Multiple words must all appear, "
                 + "e.g. \"oak tree\". Omit to list everything in scope.");
         JsonObject scope = Schema.prop(schema, "scope", "string",
-            "\"all\", \"mine\", or a folder inside prefabs/ such as \"Trees\".");
+            "\"all\", \"mine\", or a folder such as \"Trees\".");
         Schema.defaultValue(scope, "all");
         JsonObject limit = Schema.prop(schema, "limit", "integer",
             "Maximum results (default " + DEFAULT_LIMIT + ", max " + MAX_LIMIT + ").");
@@ -84,14 +87,15 @@ public final class SearchPrefabsTool implements McpTool {
         int limit = Math.max(1, Math.min(JsonRpc.intOr(arguments, "limit", DEFAULT_LIMIT), MAX_LIMIT));
         int offset = Math.max(0, JsonRpc.intOr(arguments, "offset", 0));
 
-        Path prefabsRoot = PrefabStore.get().getServerPrefabsPath();
+        List<PrefabRoots.Root> roots = PrefabRoots.current();
+        Path prefabsRoot = roots.get(0).directory();
         Path staging = PrefabLocation.stagingDirectory(services.stagingRoot(), caller);
 
         List<Entry> inScope = new ArrayList<>();
         switch (scope.toLowerCase(Locale.ROOT)) {
             case "all" -> {
                 addStaged(inScope, staging);
-                addTree(inScope, prefabsRoot, prefabsRoot, true);
+                addRoots(inScope, PrefabRoots.list(roots, null));
             }
             case "mine" -> {
                 addStaged(inScope, staging);
@@ -102,15 +106,14 @@ public final class SearchPrefabsTool implements McpTool {
             default -> {
                 String folder = scope.replace('\\', '/');
                 while (folder.endsWith("/")) folder = folder.substring(0, folder.length() - 1);
-                Path directory = PathUtil.resolvePathWithinDir(prefabsRoot, folder);
-                if (directory == null) {
+                if (PathUtil.resolvePathWithinDir(prefabsRoot, folder) == null) {
                     return ToolResult.failure("scope \"" + scope + "\" escapes the prefabs directory.");
                 }
-                if (!Files.isDirectory(directory)) {
-                    return ToolResult.failure("No folder \"" + folder + "\" inside prefabs/. Use "
-                        + "\"all\", \"mine\", or a folder from a name listed by an earlier search.");
+                addRoots(inScope, PrefabRoots.list(roots, folder));
+                if (inScope.isEmpty()) {
+                    return ToolResult.failure("No prefabs in a folder \"" + folder + "\" in prefabs/ or any "
+                        + "asset pack. Use \"all\", \"mine\", or a folder from a name listed by an earlier search.");
                 }
-                addTree(inScope, prefabsRoot, directory, true);
             }
         }
 
@@ -175,6 +178,10 @@ public final class SearchPrefabsTool implements McpTool {
         for (Path target : PrefabLocation.listInTree(staging, false)) {
             into.add(new Entry(target.getFileName().toString(), target, staging));
         }
+    }
+
+    private static void addRoots(List<Entry> into, List<PrefabRoots.Found> found) {
+        for (PrefabRoots.Found prefab : found) into.add(new Entry(prefab.name(), prefab.target(), null));
     }
 
     private static void addTree(List<Entry> into, Path prefabsRoot, Path directory, boolean recursive) {
